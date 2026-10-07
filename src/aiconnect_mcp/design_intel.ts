@@ -397,6 +397,45 @@ export function buildBrand(opts: { preset?: string; brand?: string; primary?: st
 }
 
 // ---------------------------------------------------------------------------
+// LOCAL layout audit — pure, zero-dep, fully offline. Given a (filtered)
+// node tree as returned by get_node_info, report geometry values that fall
+// OFF the grid. The agent fixes them with move_node / resize_node /
+// set_corner_radius. PURE and unit-testable.
+// ---------------------------------------------------------------------------
+export interface AuditFinding { id: string; name: string; type: string; field: string; value: number }
+export function auditLayout(
+  node: any,
+  opts: { grid?: number; maxOffenders?: number } = {}
+): { grid: number; checked: number; offGrid: number; findings: AuditFinding[] } {
+  const grid = opts.grid && opts.grid > 0 ? opts.grid : 8;
+  const cap = opts.maxOffenders && opts.maxOffenders > 0 ? opts.maxOffenders : 30;
+  const findings: AuditFinding[] = [];
+  let checked = 0;
+  const off = (v: number): boolean => {
+    if (typeof v !== "number" || !isFinite(v)) return false;
+    const r = Math.abs(Math.round(v * 100) / 100 % grid);
+    return r > 1e-6 && Math.abs(r - grid) > 1e-6;
+  };
+  const walk = (n: any) => {
+    if (!n || typeof n !== "object") return;
+    checked++;
+    const box = n.absoluteBoundingBox || n.bbox;
+    if (box) {
+      const fields: [string, number][] = [["x", box.x], ["y", box.y], ["width", box.width], ["height", box.height]];
+      for (const [f, v] of fields) {
+        if (off(v) && findings.length < cap) findings.push({ id: n.id, name: n.name, type: n.type, field: f, value: Math.round(v * 100) / 100 });
+      }
+    }
+    if (typeof n.cornerRadius === "number" && off(n.cornerRadius) && findings.length < cap) {
+      findings.push({ id: n.id, name: n.name, type: n.type, field: "cornerRadius", value: n.cornerRadius });
+    }
+    for (const c of n.children || []) walk(c);
+  };
+  walk(node);
+  return { grid, checked, offGrid: findings.length, findings };
+}
+
+// ---------------------------------------------------------------------------
 // LOCAL "Content Reel" — realistic placeholder replacement. Pure, zero-dep,
 // fully offline (no API call): a local-compute superpower a cloud peer lacks.
 // Pools are small & hand-rolled; composition (emails/phones/dates/prices) is

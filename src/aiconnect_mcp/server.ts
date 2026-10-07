@@ -10,7 +10,7 @@ import { v4 as uuidv4 } from "uuid";
 import {
   generatePalette, checkContrast, suggestFonts, generateTheme,
   listBrandPresets, buildBrand, searchIcons, fetchIconSvg, searchImages,
-  generateContent, parseTokensFile,
+  generateContent, parseTokensFile, auditLayout,
 } from "./design_intel.js";
 import { readFileSync } from "node:fs";
 
@@ -1186,17 +1186,17 @@ server.tool(
   }
 );
 
-// Export Node as Image Tool
+// Export Node as Image Tool (PNG/JPG render as images; SVG returns markup text; PDF returns base64 text)
 server.tool(
   "export_node_as_image",
-  "Export a node as an image from Figma",
+  "Export a node from Figma. PNG/JPG come back as images; SVG comes back as markup text; PDF comes back as base64 text.",
   {
     nodeId: z.string().describe("The ID of the node to export"),
     format: z
       .enum(["PNG", "JPG", "SVG", "PDF"])
       .optional()
-      .describe("Export format"),
-    scale: z.number().positive().optional().describe("Export scale"),
+      .describe("Export format (default PNG)"),
+    scale: z.number().positive().optional().describe("Export scale (raster formats only)"),
   },
   async ({ nodeId, format, scale }: any) => {
     try {
@@ -1205,16 +1205,27 @@ server.tool(
         format: format || "PNG",
         scale: scale || 1,
       });
-      const typedResult = result as { imageData: string; mimeType: string };
+      const typedResult = result as { imageData: string; mimeType: string; format: string };
+      const mime = typedResult.mimeType || "image/png";
 
+      if (mime.startsWith("image/")) {
+        return {
+          content: [
+            {
+              type: "image",
+              data: typedResult.imageData,
+              mimeType: mime,
+            },
+          ],
+        };
+      }
+      // SVG markup or PDF binary: return as text so nothing is mislabeled.
+      const text =
+        mime === "image/svg+xml"
+          ? Buffer.from(typedResult.imageData, "base64").toString("utf8")
+          : `PDF export (base64, ${typedResult.imageData.length} chars):\n${typedResult.imageData}`;
       return {
-        content: [
-          {
-            type: "image",
-            data: typedResult.imageData,
-            mimeType: typedResult.mimeType || "image/png",
-          },
-        ],
+        content: [{ type: "text", text }],
       };
     } catch (error) {
       return {
@@ -2683,10 +2694,11 @@ server.tool(
   "Get Figma Prototyping Reactions from multiple nodes. CRITICAL: The output MUST be processed using the 'reaction_to_connector_strategy' prompt IMMEDIATELY to generate parameters for connector lines via the 'create_connections' tool.",
   {
     nodeIds: z.array(z.string()).describe("Array of node IDs to get reactions from"),
+    highlight: z.boolean().optional().describe("Briefly outline reacting nodes orange in Figma (default true); set false for a side-effect-free read"),
   },
-  async ({ nodeIds }: any) => {
+  async ({ nodeIds, highlight }: any) => {
     try {
-      const result = await sendCommandToFigma("get_reactions", { nodeIds });
+      const result = await sendCommandToFigma("get_reactions", { nodeIds, highlight: highlight !== false });
       return {
         content: [
           {
@@ -3010,7 +3022,21 @@ type FigmaCommand =
   | "batch_ops"
   | "list_pages"
   | "set_page"
-  | "get_page_info";
+  | "get_page_info"
+  | "create_page"
+  | "rename_page"
+  | "delete_page"
+  | "create_component"
+  | "create_component_from_node"
+  | "get_component_sets"
+  | "search_nodes"
+  | "extract_images"
+  | "create_style"
+  | "apply_style"
+  | "boolean_op"
+  | "set_mask"
+  | "set_hyperlink"
+  | "audit_layout";
 
 type CommandParams = {
   get_document_info: { includeChildren?: boolean; topLimit?: number };
@@ -3164,6 +3190,20 @@ type CommandParams = {
   set_selections: {
     nodeIds: string[];
   };
+  create_page: { name?: string; index?: number };
+  rename_page: { pageId: string; name: string };
+  delete_page: { pageId: string };
+  create_component: { name?: string; parentId?: string; x?: number; y?: number };
+  create_component_from_node: { nodeId: string; name?: string };
+  get_component_sets: { limit?: number };
+  search_nodes: { query: string; types?: string[]; pageId?: string; matchText?: boolean; maxResults?: number };
+  extract_images: { nodeId: string; maxImages?: number };
+  create_style: { kind: string; name: string; color?: any; font?: any; fontSize?: number; effects?: any[]; description?: string };
+  apply_style: { nodeId: string; styleId: string; kind: string };
+  boolean_op: { nodeIds: string[]; operation?: string; name?: string };
+  set_mask: { nodeId: string; isMask: boolean };
+  set_hyperlink: { nodeId: string; url?: string; start?: number; end?: number };
+  audit_layout: { nodeId: string; grid?: number; maxDepth?: number; maxOffenders?: number };
 
 };
 
@@ -4104,6 +4144,283 @@ server.tool(
       return { content: [{ type: "text", text: JSON.stringify({ collectionId: colRes.id, format: detected, created, byType, from: filePath ? `file:${filePath}` : "inline" }) }] };
     } catch (error) {
       return { content: [{ type: "text", text: `Error importing tokens: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+// ---- Pages, components, search, styles, booleans (batch C/D) ------------------
+// All fully local: they run inside the Figma plugin over localhost.
+
+server.tool(
+  "create_page",
+  "Create a new page in the current Figma file. Optionally place it at an index (0 = first).",
+  {
+    name: z.string().optional().describe("Page name (default 'Page N')"),
+    index: z.number().optional().describe("Position in the page list (0 = first). Omit to append at end."),
+  },
+  async ({ name, index }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_page", { name, index });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error creating page: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "rename_page",
+  "Rename a page by ID.",
+  {
+    pageId: z.string().describe("Target PAGE id (from list_pages)"),
+    name: z.string().describe("New page name"),
+  },
+  async ({ pageId, name }: any) => {
+    try {
+      const result = await sendCommandToFigma("rename_page", { pageId, name });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error renaming page: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "delete_page",
+  "Delete a page by ID. Refuses to delete the file's only remaining page.",
+  {
+    pageId: z.string().describe("Target PAGE id (from list_pages)"),
+  },
+  async ({ pageId }: any) => {
+    try {
+      const result = await sendCommandToFigma("delete_page", { pageId });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error deleting page: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "create_component",
+  "Create a new empty component. Move content into it afterwards (insert_child / batch_ops).",
+  {
+    name: z.string().optional().describe("Component name"),
+    parentId: z.string().optional().describe("Parent node (page or frame); omit for the current page"),
+    x: z.number().optional().describe("X position"),
+    y: z.number().optional().describe("Y position"),
+  },
+  async ({ name, parentId, x, y }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_component", { name, parentId, x, y });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error creating component: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "create_component_from_node",
+  "Convert an existing frame/group into a component in place (keeps position and children).",
+  {
+    nodeId: z.string().describe("ID of the frame/group to convert"),
+    name: z.string().optional().describe("Component name (keeps the node's name if omitted)"),
+  },
+  async ({ nodeId, name }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_component_from_node", { nodeId, name });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error creating component from node: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "get_component_sets",
+  "List component sets (variants) across all pages with their variant properties and per-variant ids. " +
+    "Use with create_component_instance to place a specific variant.",
+  {
+    limit: z.number().optional().describe("Max sets to return (default 100)"),
+  },
+  async ({ limit }: any) => {
+    try {
+      const result = await sendCommandToFigma("get_component_sets", { limit });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error listing component sets: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "search_nodes",
+  "Find nodes by layer-name substring across all pages (or one pageId). Filter by node types; optionally also match text content. " +
+    "Cheap project-wide navigation: use it to locate frames/components before reading or editing them.",
+  {
+    query: z.string().describe("Case-insensitive substring to match against layer names"),
+    types: z.array(z.string()).optional().describe("Node types to include, e.g. ['FRAME','COMPONENT','TEXT']"),
+    pageId: z.string().optional().describe("Restrict the search to one page"),
+    matchText: z.boolean().optional().describe("Also match TEXT node contents (default false)"),
+    maxResults: z.number().optional().describe("Max results (default 50, max 200)"),
+  },
+  async ({ query, types, pageId, matchText, maxResults }: any) => {
+    try {
+      const result = await sendCommandToFigma("search_nodes", { query, types, pageId, matchText, maxResults });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error searching nodes: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "extract_images",
+  "Extract the ORIGINAL uploaded source images used as fills anywhere under a node (no re-render). " +
+    "Local equivalent of a raw asset download — returns base64 bytes per unique imageHash. Use it to audit or transfer images.",
+  {
+    nodeId: z.string().describe("Container node to scan (page, frame, or any node)"),
+    maxImages: z.number().optional().describe("Max unique images (default 20, max 50)"),
+  },
+  async ({ nodeId, maxImages }: any) => {
+    try {
+      const result: any = await sendCommandToFigma("extract_images", { nodeId, maxImages });
+      // Keep the response compact: full base64 is large, so summarize unless tiny.
+      const totalBytes = (result.images || []).reduce((s: number, i: any) => s + (i.byteLength || 0), 0);
+      const summary = {
+        nodeId: result.nodeId,
+        count: result.count,
+        totalBytes,
+        images: (result.images || []).map((i: any) => ({
+          imageHash: i.imageHash,
+          byteLength: i.byteLength,
+          scaleMode: i.scaleMode,
+          error: i.error,
+          base64: i.base64 && i.base64.length < 20000 ? i.base64 : undefined,
+          base64Truncated: i.base64 ? i.base64.length >= 20000 : undefined,
+          base64Length: i.base64 ? i.base64.length : 0,
+        })),
+      };
+      return { content: [{ type: "text", text: JSON.stringify(summary) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error extracting images: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "create_style",
+  "Create a local style (the write side of get_styles). kind paint takes a solid color; text takes a font + size; effect takes an effects array (same shape as set_effect).",
+  {
+    kind: z.enum(["paint", "text", "effect"]).describe("Style kind"),
+    name: z.string().describe("Style name, e.g. 'Brand/Primary'"),
+    color: z.object({ r: z.number(), g: z.number(), b: z.number(), a: z.number().optional() }).optional().describe("Solid color for paint styles"),
+    font: z.object({ family: z.string(), style: z.string().optional() }).optional().describe("Font for text styles"),
+    fontSize: z.number().optional().describe("Font size for text styles"),
+    effects: z.array(z.any()).optional().describe("Effects array for effect styles"),
+    description: z.string().optional().describe("Style description"),
+  },
+  async ({ kind, name, color, font, fontSize, effects, description }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_style", { kind, name, color, font, fontSize, effects, description });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error creating style: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "apply_style",
+  "Apply a local style to a node by style id (from get_styles or create_style).",
+  {
+    nodeId: z.string().describe("Target node id"),
+    styleId: z.string().describe("Style id"),
+    kind: z.enum(["paint", "text", "effect"]).describe("Style kind"),
+  },
+  async ({ nodeId, styleId, kind }: any) => {
+    try {
+      const result = await sendCommandToFigma("apply_style", { nodeId, styleId, kind });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error applying style: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "boolean_op",
+  "Combine 2+ shapes with a boolean operation (union/subtract/intersect/exclude). Returns the new node id; the inputs are consumed.",
+  {
+    nodeIds: z.array(z.string()).describe("Ids of the shapes to combine (min 2, same parent works best)"),
+    operation: z.enum(["union", "subtract", "intersect", "exclude"]).optional().describe("Operation (default union)"),
+    name: z.string().optional().describe("Name for the result node"),
+  },
+  async ({ nodeIds, operation, name }: any) => {
+    try {
+      const result = await sendCommandToFigma("boolean_op", { nodeIds, operation, name });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error running boolean op: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "set_mask",
+  "Turn a node's mask flag on/off (isMask) for masking groups.",
+  {
+    nodeId: z.string().describe("Target node id"),
+    isMask: z.boolean().describe("true = use as mask, false = regular node"),
+  },
+  async ({ nodeId, isMask }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_mask", { nodeId, isMask });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error setting mask: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "set_hyperlink",
+  "Set (or clear, by omitting url) a hyperlink on a text node range. Defaults to the whole text.",
+  {
+    nodeId: z.string().describe("Target TEXT node id"),
+    url: z.string().optional().describe("URL to link; omit to clear the link on the range"),
+    start: z.number().optional().describe("Range start (default 0)"),
+    end: z.number().optional().describe("Range end (default end of text)"),
+  },
+  async ({ nodeId, url, start, end }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_hyperlink", { nodeId, url, start, end });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error setting hyperlink: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "audit_layout",
+  "LOCAL layout audit: fetch a node subtree and report positions/sizes/paddings/gaps that fall OFF the grid " +
+    "(default 8pt). Fully offline math on data already read from Figma — flags sloppy values for the agent to fix with move/resize/set_padding.",
+  {
+    nodeId: z.string().describe("Root node to audit (frame, page, or selection root)"),
+    grid: z.number().optional().describe("Grid unit in px (default 8; use 4 for 4pt grids)"),
+    maxDepth: z.number().optional().describe("Depth to walk (default 6)"),
+    maxOffenders: z.number().optional().describe("Max off-grid entries listed (default 30)"),
+  },
+  async ({ nodeId, grid, maxDepth, maxOffenders }: any) => {
+    try {
+      const info: any = await sendCommandToFigma("get_node_info", { nodeId, maxDepth: maxDepth || 6, maxChildren: 100 });
+      const doc = info && info.document ? info.document : info;
+      const report = auditLayout({ id: nodeId, ...(doc || {}) }, { grid: grid || 8, maxOffenders: maxOffenders || 30 });
+      return { content: [{ type: "text", text: JSON.stringify(report) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error auditing layout: ${error instanceof Error ? error.message : String(error)}` }] };
     }
   }
 );

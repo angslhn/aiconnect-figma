@@ -5,6 +5,43 @@ All notable changes to **AIConnect for Figma** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed — accuracy
+
+- **`export_node_as_image`** now honors `format` (PNG/JPG/SVG/PDF). PNG/JPG return
+  images; SVG returns markup text; PDF returns base64 text. Previously the
+  plugin hardcoded PNG while the tool advertised four formats.
+- **`get_local_components`** now includes `COMPONENT_SET` nodes (with a `type`
+  field per entry) instead of silently skipping variants.
+- **`get_reactions({highlight})`** — the temporary orange outline is now
+  opt-out (`highlight:false` for a side-effect-free read).
+
+### Added — reads
+
+- **`search_nodes({query, types, pageId, matchText})`** — project-wide layer
+  search across all pages.
+- **`get_component_sets`** — variant systems with `variantGroupProperties`
+  and per-variant ids.
+- **`extract_images({nodeId})`** — original uploaded source images as base64
+  (local equivalent of a raw asset download).
+
+### Added — writes
+
+- **`create_page` / `rename_page` / `delete_page`** — page management
+  (delete refuses the file's last page).
+- **`create_component` / `create_component_from_node`** — build component
+  systems, not just instances.
+- **`create_style` / `apply_style`** — write side of `get_styles`
+  (paint/text/effect).
+- **`boolean_op`** (union/subtract/intersect/exclude), **`set_mask`**,
+  **`set_hyperlink`** (text ranges).
+
+### Added — design intelligence (local)
+
+- **`audit_layout({nodeId, grid})`** — offline off-grid report
+  (positions/sizes/corner radii not on the 8pt grid) for the agent to fix.
+
 ## [1.4.0] — 2026-10-07
 
 ### Added — Full-project read access

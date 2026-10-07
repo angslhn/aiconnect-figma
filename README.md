@@ -92,7 +92,7 @@ Most of these are behind a paid Figma seat or a paid plugin. With AIConnect they
 | 🤝 **Client‑agnostic** | Use it with Claude Code, Cursor, or any MCP client — not tied to one editor. |
 | ⚡ **`batch_ops`** | Build a whole page/section in **one** round‑trip instead of 100+ individual calls. |
 | 🚀 **Near‑zero latency** | Calls run over `localhost`, not a cloud hop — **~1 ms median, ~4 ms p90** per call (see [Performance](#-performance)). |
-| 🎨 **Rich commands** | Images, fonts, gradients, effects, SVG, auto‑layout, clone, reorder — **69 tools**. |
+| 🎨 **Rich commands** | Images, fonts, gradients, effects, SVG, auto-layout, clone, reorder — **86 tools**. |
 | 🎯 **Design intelligence** | Keyless & local: `apply_brand` (full token systems from a preset/brand/color), OKLCH `generate_palette`/`generate_theme`, WCAG `check_contrast` (+auto‑fix), `suggest_fonts`, 200k+ `insert_icon` (Iconify), `search_images` (Openverse). |
 | 🎟️ **Design tokens & Dev Mode** | First‑class Figma variables (`create_variable`, `bind_variable`, `export_tokens`), plus `get_css` — Dev Mode‑equivalent inspect **without a paid Dev seat**. |
 | 🔍 **Debuggable** | `get_status`, `get_console_logs`, and `get_page_snapshot` — the agent literally sees its work and self-corrects. |
@@ -241,21 +241,21 @@ batch_ops({
 ## 🧰 Tools
 
 <details>
-<summary><b>67 tools across reads, create/edit, style, layout, batch, tokens, debug &amp; design intelligence</b></summary>
+<summary><b>86 tools across reads, create/edit, style, layout, batch, tokens, debug &amp; design intelligence</b></summary>
 
 <br/>
 
-**Reads** — `get_document_info`, `get_selection`, `get_node_info`, `get_nodes_info`, `read_my_design`, `scan_text_nodes`, `scan_nodes_by_types`, `get_styles`, `get_local_components`, `get_annotations`, `get_reactions`, `export_node_as_image`
+**Reads** — `get_document_info`, `list_pages`, `set_page`, `get_page_info`, `get_selection`, `get_node_info`, `get_nodes_info`, `read_my_design`, `scan_text_nodes`, `scan_nodes_by_types`, `search_nodes`, `get_styles`, `get_local_components`, `get_component_sets`, `get_annotations`, `get_reactions`, `export_node_as_image`, `extract_images`
 
-**Create / edit** — `create_frame`, `create_text`, `create_rectangle`, `create_ellipse`, `create_svg`, `create_component_instance`, `clone_node`, `insert_child`, `move_node`, `resize_node`, `delete_node`, `delete_multiple_nodes`
+**Create / edit** — `create_page`, `rename_page`, `delete_page`, `create_frame`, `create_text`, `create_rectangle`, `create_ellipse`, `create_svg`, `create_component`, `create_component_from_node`, `create_component_instance`, `clone_node`, `insert_child`, `move_node`, `resize_node`, `boolean_op`, `set_mask`, `set_hyperlink`, `delete_node`, `delete_multiple_nodes`
 
-**Style** — `set_fill_color`, `set_stroke_color`, `set_gradient_fill`, `set_effect`, `set_corner_radius`, `set_image_fill`, `set_font_name`, `set_text_content`, `set_multiple_text_contents`
+**Style** — `set_fill_color`, `set_stroke_color`, `set_gradient_fill`, `set_effect`, `set_corner_radius`, `set_image_fill`, `set_font_name`, `set_text_content`, `set_multiple_text_contents`, `create_style`, `apply_style`
 
 **Layout** — `set_layout_mode`, `set_layout_sizing`, `set_padding`, `set_item_spacing`, `set_axis_align`
 
 **Design tokens / variables** — `get_variables`, `create_variable_collection`, `create_variable`, `set_variable_value`, `bind_variable`, `export_tokens` (DTCG/CSS/Tailwind)
 
-**Dev & debug** — `get_css` (Dev Mode‑equivalent, no paid seat), `get_status`, `get_console_logs`, `get_page_snapshot`
+**Dev & debug** — `get_css` (Dev Mode‑equivalent, no paid seat), `get_status`, `get_console_logs`, `get_page_snapshot`, `audit_layout` (local off-grid check)
 
 **Design intelligence** (keyless, local) — `apply_brand`, `list_brand_presets`, `generate_palette`, `generate_theme`, `check_contrast`, `suggest_fonts`, `search_icons`, `insert_icon`, `search_images`
 

@@ -265,7 +265,7 @@ async function handleCommand(command, params) {
       if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
         throw new Error("Missing or invalid nodeIds parameter");
       }
-      return await getReactions(params.nodeIds);  
+      return await getReactions(params.nodeIds, params);  
     case "set_default_connector":
       return await setDefaultConnector(params);
     case "create_connections":
@@ -308,6 +308,32 @@ async function handleCommand(command, params) {
       return await bindVariable(params);
     case "get_css":
       return await getCss(params);
+    case "create_page":
+      return await createPage(params);
+    case "rename_page":
+      return await renamePage(params);
+    case "delete_page":
+      return await deletePage(params);
+    case "create_component":
+      return await createComponent(params);
+    case "create_component_from_node":
+      return await createComponentFromNode(params);
+    case "get_component_sets":
+      return await getComponentSets(params);
+    case "search_nodes":
+      return await searchNodes(params);
+    case "extract_images":
+      return await extractImages(params);
+    case "create_style":
+      return await createStyle(params);
+    case "apply_style":
+      return await applyStyle(params);
+    case "boolean_op":
+      return await booleanOp(params);
+    case "set_mask":
+      return await setMask(params);
+    case "set_hyperlink":
+      return await setHyperlink(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -818,7 +844,8 @@ async function getNodesInfo(nodeIds) {
   }
 }
 
-async function getReactions(nodeIds) {
+async function getReactions(nodeIds, opts) {
+  const highlight = !opts || opts.highlight !== false;
   try {
     const commandId = generateCommandId();
     sendProgressUpdate(
@@ -868,7 +895,7 @@ async function getReactions(nodeIds) {
           path: getNodePath(node)
         });
         // Apply highlight effect (orange border)
-        await highlightNodeWithAnimation(node);
+        if (highlight) await highlightNodeWithAnimation(node);
       }
       
       // If node has children, recursively search them
@@ -1559,13 +1586,14 @@ async function getLocalComponents(params) {
     var page = pages[i];
     await page.loadAsync();
 
-    var pageComponents = page.findAllWithCriteria({ types: ["COMPONENT"] });
+    var pageComponents = page.findAllWithCriteria({ types: ["COMPONENT", "COMPONENT_SET"] });
 
     for (var j = 0; j < pageComponents.length; j++) {
       var component = pageComponents[j];
       allComponents.push({
         id: component.id,
         name: component.name,
+        type: component.type,
         key: "key" in component ? component.key : null,
       });
     }
@@ -1676,9 +1704,12 @@ async function createComponentInstance(params) {
 }
 
 async function exportNodeAsImage(params) {
-  const { nodeId, scale = 1 } = params || {};
+  const { nodeId, scale = 1, format = "PNG" } = params || {};
 
-  const format = "PNG";
+  const allowed = ["PNG", "JPG", "SVG", "PDF"];
+  if (allowed.indexOf(format) === -1) {
+    throw new Error(`Unsupported format "${format}" (use ${allowed.join(" | ")})`);
+  }
 
   if (!nodeId) {
     throw new Error("Missing nodeId parameter");
@@ -4777,4 +4808,272 @@ async function getCss(params) {
     spec.typography = { family: node.fontName.family, style: node.fontName.style, size: node.fontSize, lineHeight: node.lineHeight };
   }
   return { css, spec };
+}
+
+// ---- Pages ---------------------------------------------------------------
+
+async function createPage(params) {
+  const p = params || {};
+  const page = figma.createPage();
+  if (p.name) page.name = p.name;
+  if (typeof p.index === "number") {
+    const n = figma.root.children.length;
+    const idx = Math.max(0, Math.min(p.index, n - 1));
+    figma.root.insertChild(idx, page);
+  }
+  return { id: page.id, name: page.name };
+}
+
+async function renamePage(params) {
+  const p = params || {};
+  const pageId = p.pageId || p.nodeId;
+  if (!pageId) throw new Error("Missing pageId parameter");
+  if (!p.name) throw new Error("Missing name parameter");
+  const node = await figma.getNodeByIdAsync(pageId);
+  if (!node) throw new Error("Page not found: " + pageId);
+  if (node.type !== "PAGE") throw new Error("Node is not a PAGE: " + pageId + " (got " + node.type + ")");
+  node.name = p.name;
+  return { id: node.id, name: node.name };
+}
+
+async function deletePage(params) {
+  const p = params || {};
+  const pageId = p.pageId || p.nodeId;
+  if (!pageId) throw new Error("Missing pageId parameter");
+  const node = await figma.getNodeByIdAsync(pageId);
+  if (!node) throw new Error("Page not found: " + pageId);
+  if (node.type !== "PAGE") throw new Error("Node is not a PAGE: " + pageId + " (got " + node.type + ")");
+  if (figma.root.children.length <= 1) throw new Error("Cannot delete the only page in the file");
+  const info = { id: node.id, name: node.name };
+  node.remove();
+  return info;
+}
+
+// ---- Components ----------------------------------------------------------
+
+async function createComponent(params) {
+  const p = params || {};
+  const c = figma.createComponent();
+  if (p.name) c.name = p.name;
+  if (p.x != null) c.x = p.x;
+  if (p.y != null) c.y = p.y;
+  if (p.parentId) {
+    const parent = await figma.getNodeByIdAsync(p.parentId);
+    if (!parent || !("appendChild" in parent)) throw new Error("Parent not found or does not support children: " + p.parentId);
+    parent.appendChild(c);
+  }
+  return { id: c.id, name: c.name };
+}
+
+async function createComponentFromNode(params) {
+  const p = params || {};
+  if (!p.nodeId) throw new Error("Missing nodeId parameter");
+  const node = await figma.getNodeByIdAsync(p.nodeId);
+  if (!node) throw new Error("Node not found: " + p.nodeId);
+  const c = figma.createComponentFromNode(node);
+  if (p.name) c.name = p.name;
+  return { id: c.id, name: c.name, fromNodeId: p.nodeId };
+}
+
+async function getComponentSets(params) {
+  const p = params || {};
+  const limit = Math.max(1, Math.min(p.limit || 100, 500));
+  const out = [];
+  const pages = figma.root.children || [];
+  for (const page of pages) {
+    try { await page.loadAsync(); } catch (e) {}
+    const sets = page.findAllWithCriteria({ types: ["COMPONENT_SET"] });
+    for (const s of sets) {
+      const variants = (s.children || [])
+        .filter((c) => c.type === "COMPONENT")
+        .map((c) => ({ id: c.id, name: c.name, variantProperties: c.variantProperties || undefined }));
+      out.push({
+        id: s.id,
+        name: s.name,
+        page: page.name,
+        variantGroupProperties: s.variantGroupProperties || undefined,
+        defaultVariantId: (s.defaultVariant && s.defaultVariant.id) || undefined,
+        variantCount: variants.length,
+        variants: variants.slice(0, 50),
+      });
+      if (out.length >= limit) break;
+    }
+    if (out.length >= limit) break;
+  }
+  return { count: out.length, sets: out };
+}
+
+// ---- Search --------------------------------------------------------------
+
+async function searchNodes(params) {
+  const p = params || {};
+  if (!p.query) throw new Error("Missing query parameter");
+  const q = String(p.query).toLowerCase();
+  const types = p.types && p.types.length ? p.types : null;
+  const maxResults = Math.max(1, Math.min(p.maxResults || 50, 200));
+  const results = [];
+  let pages = figma.root.children || [];
+  if (p.pageId) {
+    const only = await figma.getNodeByIdAsync(p.pageId);
+    if (!only) throw new Error("Page not found: " + p.pageId);
+    pages = [only];
+  }
+  for (const page of pages) {
+    try { await page.loadAsync(); } catch (e) {}
+    const all = page.findAll(function (n) {
+      if (types && types.indexOf(n.type) === -1) return false;
+      if ((n.name || "").toLowerCase().indexOf(q) !== -1) return true;
+      if (p.matchText && n.type === "TEXT" && typeof n.characters === "string" &&
+          n.characters.toLowerCase().indexOf(q) !== -1) return true;
+      return false;
+    });
+    for (const n of all) {
+      results.push({
+        id: n.id, name: n.name, type: n.type, page: page.name,
+        width: ("width" in n) ? Math.round(n.width) : undefined,
+        height: ("height" in n) ? Math.round(n.height) : undefined,
+      });
+      if (results.length >= maxResults) break;
+    }
+    if (results.length >= maxResults) break;
+  }
+  return { count: results.length, truncated: results.length >= maxResults, results };
+}
+
+// ---- Image extraction (local equivalent of raw source-image download) ----
+
+async function extractImages(params) {
+  const p = params || {};
+  if (!p.nodeId) throw new Error("Missing nodeId parameter");
+  const maxImages = Math.max(1, Math.min(p.maxImages || 20, 50));
+  const root = await figma.getNodeByIdAsync(p.nodeId);
+  if (!root) throw new Error("Node not found: " + p.nodeId);
+  const seen = {};
+  const out = [];
+  const stack = [root];
+  while (stack.length && out.length < maxImages) {
+    const n = stack.pop();
+    const fills = (n && n.fills) || [];
+    for (const f of fills) {
+      if (f && f.type === "IMAGE" && f.imageHash && !seen[f.imageHash]) {
+        seen[f.imageHash] = true;
+        try {
+          const bytes = await figma.getImageByHash(f.imageHash).getBytesAsync();
+          out.push({ imageHash: f.imageHash, byteLength: bytes.length, base64: customBase64Encode(bytes), scaleMode: f.scaleMode || undefined });
+        } catch (e) {
+          out.push({ imageHash: f.imageHash, error: (e && e.message) || String(e) });
+        }
+        if (out.length >= maxImages) break;
+      }
+    }
+    if (n && "children" in n && n.children) { for (const c of n.children) stack.push(c); }
+  }
+  return { nodeId: p.nodeId, count: out.length, images: out };
+}
+
+// ---- Styles (write side of get_styles) ------------------------------------
+
+async function createStyle(params) {
+  const p = params || {};
+  if (!p.kind) throw new Error("Missing kind parameter (paint | text | effect)");
+  if (!p.name) throw new Error("Missing name parameter");
+  if (p.kind === "paint") {
+    const s = figma.createPaintStyle();
+    s.name = p.name;
+    const c = p.color || { r: 0, g: 0, b: 0, a: 1 };
+    s.paints = [{ type: "SOLID", color: { r: c.r, g: c.g, b: c.b }, opacity: (c.a != null ? c.a : 1) }];
+    if (p.description) s.description = p.description;
+    return { id: s.id, name: s.name, kind: "paint" };
+  }
+  if (p.kind === "text") {
+    const family = (p.font && p.font.family) || "Inter";
+    const style = (p.font && p.font.style) || "Regular";
+    await figma.loadFontAsync({ family, style });
+    const s = figma.createTextStyle();
+    s.name = p.name;
+    s.fontName = { family, style };
+    if (p.fontSize) s.fontSize = p.fontSize;
+    if (p.description) s.description = p.description;
+    return { id: s.id, name: s.name, kind: "text" };
+  }
+  if (p.kind === "effect") {
+    const s = figma.createEffectStyle();
+    s.name = p.name;
+    s.effects = (p.effects && p.effects.length ? p.effects : [
+      { type: "DROP_SHADOW", color: { r: 0, g: 0, b: 0, a: 0.15 }, offset: { x: 0, y: 4 }, radius: 12, spread: 0, visible: true, blendMode: "NORMAL" },
+    ]);
+    if (p.description) s.description = p.description;
+    return { id: s.id, name: s.name, kind: "effect" };
+  }
+  throw new Error("Unknown style kind: " + p.kind + " (use paint | text | effect)");
+}
+
+async function applyStyle(params) {
+  const p = params || {};
+  if (!p.nodeId) throw new Error("Missing nodeId parameter");
+  if (!p.styleId) throw new Error("Missing styleId parameter");
+  if (!p.kind) throw new Error("Missing kind parameter (paint | text | effect)");
+  const node = await figma.getNodeByIdAsync(p.nodeId);
+  if (!node) throw new Error("Node not found: " + p.nodeId);
+  if (p.kind === "paint") {
+    if (!("fillStyleId" in node)) throw new Error("Node does not support paint styles: " + p.nodeId);
+    node.fillStyleId = p.styleId;
+  } else if (p.kind === "text") {
+    if (node.type !== "TEXT") throw new Error("Node is not a text node: " + p.nodeId);
+    node.textStyleId = p.styleId;
+  } else if (p.kind === "effect") {
+    if (!("effectStyleId" in node)) throw new Error("Node does not support effect styles: " + p.nodeId);
+    node.effectStyleId = p.styleId;
+  } else {
+    throw new Error("Unknown style kind: " + p.kind);
+  }
+  return { id: node.id, name: node.name, kind: p.kind, styleId: p.styleId };
+}
+
+// ---- Booleans, masks, hyperlinks ------------------------------------------
+
+async function booleanOp(params) {
+  const p = params || {};
+  const ids = p.nodeIds || [];
+  if (ids.length < 2) throw new Error("boolean_op needs at least 2 nodeIds");
+  const nodes = [];
+  for (const id of ids) {
+    const n = await figma.getNodeByIdAsync(id);
+    if (!n) throw new Error("Node not found: " + id);
+    nodes.push(n);
+  }
+  const op = String(p.operation || "union").toLowerCase();
+  const parent = nodes[0].parent;
+  let result;
+  if (op === "union") result = figma.union(nodes, parent);
+  else if (op === "subtract") result = figma.subtract(nodes, parent);
+  else if (op === "intersect") result = figma.intersect(nodes, parent);
+  else if (op === "exclude") result = figma.exclude(nodes, parent);
+  else throw new Error("Unknown operation: " + p.operation + " (use union | subtract | intersect | exclude)");
+  if (p.name) result.name = p.name;
+  return { id: result.id, name: result.name, operation: op };
+}
+
+async function setMask(params) {
+  const p = params || {};
+  if (!p.nodeId) throw new Error("Missing nodeId parameter");
+  const node = await figma.getNodeByIdAsync(p.nodeId);
+  if (!node) throw new Error("Node not found: " + p.nodeId);
+  if (!("isMask" in node)) throw new Error("Node does not support masks: " + p.nodeId);
+  node.isMask = !!p.isMask;
+  return { id: node.id, name: node.name, isMask: node.isMask };
+}
+
+async function setHyperlink(params) {
+  const p = params || {};
+  if (!p.nodeId) throw new Error("Missing nodeId parameter");
+  const node = await figma.getNodeByIdAsync(p.nodeId);
+  if (!node) throw new Error("Node not found: " + p.nodeId);
+  if (node.type !== "TEXT") throw new Error("Node is not a text node: " + p.nodeId);
+  const len = node.characters.length;
+  const start = p.start != null ? p.start : 0;
+  const end = p.end != null ? p.end : len;
+  if (p.url) node.setRangeHyperlink(start, end, { type: "URL", value: p.url });
+  else node.setRangeHyperlink(start, end, null);
+  return { id: node.id, name: node.name, url: p.url || null, start, end };
 }
