@@ -1083,6 +1083,40 @@ server.tool(
   }
 );
 
+// Rename Layer Tool — rename any layer (frame, text, section, page, ...).
+// node.name is read-write in the Figma Plugin API, so this works everywhere.
+server.tool(
+  "rename_layer",
+  "Rename any layer in Figma by node ID. Works on frames, text, sections, components, pages, etc.",
+  {
+    nodeId: z.string().describe("The ID of the node to rename"),
+    name: z.string().min(1).describe("New layer name"),
+  },
+  async ({ nodeId, name }: any) => {
+    try {
+      const result = await sendCommandToFigma('rename_layer', { nodeId, name });
+      const typedResult = result as { id: string, oldName: string, name: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Renamed "${typedResult.oldName}" (${typedResult.id}) to "${typedResult.name}"`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error renaming layer: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
 // Resize Node Tool
 server.tool(
   "resize_node",
@@ -3002,6 +3036,7 @@ type FigmaCommand =
   | "join"
   | "set_corner_radius"
   | "clone_node"
+  | "rename_layer"
   | "set_text_content"
   | "scan_text_nodes"
   | "set_multiple_text_contents"
@@ -3142,6 +3177,10 @@ type CommandParams = {
     nodeId: string;
     x?: number;
     y?: number;
+  };
+  rename_layer: {
+    nodeId: string;
+    name: string;
   };
   set_text_content: {
     nodeId: string;

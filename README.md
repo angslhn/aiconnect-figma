@@ -233,13 +233,13 @@ batch_ops({
 ## 🧰 Tools
 
 <details>
-<summary><b>86 tools across reads, create/edit, style, layout, batch, tokens, debug &amp; design intelligence</b></summary>
+<summary><b>87 tools across reads, create/edit, style, layout, batch, tokens, debug &amp; design intelligence</b></summary>
 
 <br/>
 
 **Reads** — `get_document_info`, `list_pages`, `set_page`, `get_page_info`, `get_selection`, `read_my_design`, `get_node_info`, `get_nodes_info`, `search_nodes`, `scan_text_nodes`, `scan_nodes_by_types`, `get_styles`, `get_local_components`, `get_component_sets`, `get_annotations`, `get_reactions`, `export_node_as_image` (PNG/JPG/SVG/PDF), `extract_images`
 
-**Create / edit** — `create_page`, `rename_page`, `delete_page`, `create_frame`, `create_text`, `create_rectangle`, `create_ellipse`, `create_svg`, `create_component`, `create_component_from_node`, `create_component_instance`, `clone_node`, `insert_child`, `move_node`, `resize_node`, `boolean_op` (union/subtract/intersect/exclude), `set_mask`, `set_hyperlink`, `delete_node`, `delete_multiple_nodes`
+**Create / edit** — `create_page`, `rename_page`, `delete_page`, `create_frame`, `create_text`, `create_rectangle`, `create_ellipse`, `create_svg`, `create_component`, `create_component_from_node`, `create_component_instance`, `clone_node`, `rename_layer`, `insert_child`, `move_node`, `resize_node`, `boolean_op` (union/subtract/intersect/exclude), `set_mask`, `set_hyperlink`, `delete_node`, `delete_multiple_nodes`
 
 **Style** — `set_fill_color`, `set_stroke_color`, `set_gradient_fill`, `set_effect`, `set_corner_radius`, `set_image_fill`, `set_font_name`, `set_text_content`, `set_multiple_text_contents`, `create_style`, `apply_style`
 

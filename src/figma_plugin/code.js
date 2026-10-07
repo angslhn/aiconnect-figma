@@ -196,6 +196,8 @@ async function handleCommand(command, params) {
       return await setTextContent(params);
     case "clone_node":
       return await cloneNode(params);
+    case "rename_layer":
+      return await renameLayer(params);
     case "scan_text_nodes":
       return await scanTextNodes(params);
     case "set_multiple_text_contents":
@@ -2181,6 +2183,34 @@ async function cloneNode(params) {
     y: "y" in clone ? clone.y : undefined,
     width: "width" in clone ? clone.width : undefined,
     height: "height" in clone ? clone.height : undefined,
+  };
+}
+
+// Rename any layer. The Figma Plugin API exposes node.name as read-write on
+// every node type, so this works for frames, text, sections, pages, etc.
+async function renameLayer(params) {
+  const { nodeId, name } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (name === undefined || name === null || String(name).length === 0) {
+    throw new Error("Missing name parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  const oldName = node.name;
+  node.name = String(name);
+
+  return {
+    id: node.id,
+    oldName: oldName,
+    name: node.name,
   };
 }
 

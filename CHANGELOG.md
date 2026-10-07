@@ -36,6 +36,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   (paint/text/effect).
 - **`boolean_op`** (union/subtract/intersect/exclude), **`set_mask`**,
   **`set_hyperlink`** (text ranges).
+- **`rename_layer({nodeId, name})`** — rename any layer (frames, text,
+  sections, components, pages); `node.name` is read-write in the Plugin API.
 
 ### Added — design intelligence (local)
 
