@@ -141,14 +141,20 @@ function updateSettings(settings) {
 async function handleCommand(command, params) {
   switch (command) {
     case "get_document_info":
-      return await getDocumentInfo();
+      return await getDocumentInfo(params);
+    case "list_pages":
+      return await listPages();
+    case "set_page":
+      return await setPage(params);
+    case "get_page_info":
+      return await getPageInfo(params);
     case "get_selection":
       return await getSelection();
     case "get_node_info":
       if (!params || !params.nodeId) {
         throw new Error("Missing nodeId parameter");
       }
-      return await getNodeInfo(params.nodeId);
+      return await getNodeInfo(params.nodeId, params);
     case "get_nodes_info":
       if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
         throw new Error("Missing or invalid nodeIds parameter");
@@ -510,30 +516,104 @@ async function setImageFill(params) {
   return { id: node.id, name: node.name, imageHash: image.hash, scaleMode: mode };
 }
 
-async function getDocumentInfo() {
+async function getDocumentInfo(params) {
+  const opt = params || {};
+  const includeChildren = opt.includeChildren !== false;
+  const topLimit = Math.max(1, Math.min(opt.topLimit || 50, 200));
   await figma.currentPage.loadAsync();
   const page = figma.currentPage;
+  // Full project access: list ALL pages (needs full documentAccess, not dynamic-page).
+  let pages = [];
+  try {
+    const all = figma.root.children || [];
+    for (const p of all) {
+      try { await p.loadAsync(); } catch (e) {}
+      pages.push({
+        id: p.id,
+        name: p.name,
+        type: p.type,
+        childCount: (p.children || []).length,
+        isCurrent: p.id === page.id,
+      });
+    }
+  } catch (e) {
+    pages = [{ id: page.id, name: page.name, childCount: page.children.length, isCurrent: true }];
+  }
+  let children = [];
+  if (includeChildren) {
+    children = page.children.slice(0, topLimit).map((node) => ({
+      id: node.id,
+      name: node.name,
+      type: node.type,
+      width: ("width" in node) ? Math.round(node.width) : undefined,
+      height: ("height" in node) ? Math.round(node.height) : undefined,
+      childCount: ("children" in node) ? node.children.length : 0,
+    }));
+  }
   return {
     name: page.name,
     id: page.id,
     type: page.type,
-    children: page.children.map((node) => ({
-      id: node.id,
-      name: node.name,
-      type: node.type,
-    })),
+    children,
+    truncated: page.children.length > children.length,
+    totalTopFrames: page.children.length,
     currentPage: {
       id: page.id,
       name: page.name,
       childCount: page.children.length,
     },
-    pages: [
-      {
-        id: page.id,
-        name: page.name,
-        childCount: page.children.length,
-      },
-    ],
+    pages,
+    pageCount: pages.length,
+  };
+}
+
+async function listPages() {
+  const all = figma.root.children || [];
+  const out = [];
+  for (const p of all) {
+    try { await p.loadAsync(); } catch (e) {}
+    out.push({
+      id: p.id,
+      name: p.name,
+      type: p.type,
+      childCount: (p.children || []).length,
+      isCurrent: p.id === figma.currentPage.id,
+    });
+  }
+  return { count: out.length, pages: out, currentPageId: figma.currentPage.id };
+}
+
+async function setPage(params) {
+  const p = params || {};
+  const pageId = p.pageId || p.nodeId;
+  if (!pageId) throw new Error("Missing pageId parameter");
+  const target = await figma.getNodeByIdAsync(pageId);
+  if (!target) throw new Error("Page not found: " + pageId);
+  if (target.type !== "PAGE") throw new Error("Node is not a PAGE: " + pageId + " (got " + target.type + ")");
+  try { await target.loadAsync(); } catch (e) {}
+  // Plugin API: assigning currentPage switches the editor page.
+  figma.currentPage = target;
+  return { id: target.id, name: target.name, childCount: (target.children || []).length };
+}
+
+async function getPageInfo(params) {
+  const p = params || {};
+  const pageId = p.pageId || p.nodeId || (figma.currentPage && figma.currentPage.id);
+  const node = await figma.getNodeByIdAsync(pageId);
+  if (!node) throw new Error("Page not found: " + pageId);
+  try { await node.loadAsync(); } catch (e) {}
+  const limit = Math.max(1, Math.min(p.topLimit || 50, 200));
+  return {
+    id: node.id,
+    name: node.name,
+    type: node.type,
+    childCount: (node.children || []).length,
+    children: (node.children || []).slice(0, limit).map((c) => ({
+      id: c.id, name: c.name, type: c.type,
+      width: ("width" in c) ? Math.round(c.width) : undefined,
+      height: ("height" in c) ? Math.round(c.height) : undefined,
+      childCount: ("children" in c) ? c.children.length : 0,
+    })),
   };
 }
 
@@ -576,8 +656,13 @@ function rgbaToHex(color) {
   );
 }
 
-function filterFigmaNode(node) {
-  if (node.type === "VECTOR") {
+function filterFigmaNode(node, opt) {
+  const o = opt || {};
+  const depth = (o.depth != null) ? o.depth : 0;
+  const maxDepth = (o.maxDepth != null) ? o.maxDepth : 12;
+  const maxChildren = (o.maxChildren != null) ? o.maxChildren : 100;
+  const lean = !!o.lean;
+  if (node.type === "VECTOR" && !o.includeVectors) {
     return null;
   }
 
@@ -586,58 +671,70 @@ function filterFigmaNode(node) {
     name: node.name,
     type: node.type,
   };
+  if (!lean) {
+    if (node.fills && node.fills.length > 0) {
+      filtered.fills = node.fills.map((fill) => {
+        var processedFill = Object.assign({}, fill);
+        delete processedFill.boundVariables;
+        delete processedFill.imageRef;
 
-  if (node.fills && node.fills.length > 0) {
-    filtered.fills = node.fills.map((fill) => {
-      var processedFill = Object.assign({}, fill);
-      delete processedFill.boundVariables;
-      delete processedFill.imageRef;
-
-      if (processedFill.gradientStops) {
-        processedFill.gradientStops = processedFill.gradientStops.map(
-          (stop) => {
-            var processedStop = Object.assign({}, stop);
-            if (processedStop.color) {
-              processedStop.color = rgbaToHex(processedStop.color);
+        if (processedFill.gradientStops) {
+          processedFill.gradientStops = processedFill.gradientStops.map(
+            (stop) => {
+              var processedStop = Object.assign({}, stop);
+              if (processedStop.color) {
+                processedStop.color = rgbaToHex(processedStop.color);
+              }
+              delete processedStop.boundVariables;
+              return processedStop;
             }
-            delete processedStop.boundVariables;
-            return processedStop;
-          }
-        );
-      }
+          );
+        }
 
-      if (processedFill.color) {
-        processedFill.color = rgbaToHex(processedFill.color);
-      }
+        if (processedFill.color) {
+          processedFill.color = rgbaToHex(processedFill.color);
+        }
 
-      return processedFill;
-    });
-  }
+        return processedFill;
+      });
+    }
 
-  if (node.strokes && node.strokes.length > 0) {
-    filtered.strokes = node.strokes.map((stroke) => {
-      var processedStroke = Object.assign({}, stroke);
-      delete processedStroke.boundVariables;
-      if (processedStroke.color) {
-        processedStroke.color = rgbaToHex(processedStroke.color);
-      }
-      return processedStroke;
-    });
-  }
+    if (node.strokes && node.strokes.length > 0) {
+      filtered.strokes = node.strokes.map((stroke) => {
+        var processedStroke = Object.assign({}, stroke);
+        delete processedStroke.boundVariables;
+        if (processedStroke.color) {
+          processedStroke.color = rgbaToHex(processedStroke.color);
+        }
+        return processedStroke;
+      });
+    }
 
-  if (node.cornerRadius !== undefined) {
-    filtered.cornerRadius = node.cornerRadius;
-  }
+    if (node.cornerRadius !== undefined) {
+      filtered.cornerRadius = node.cornerRadius;
+    }
 
-  if (node.absoluteBoundingBox) {
-    filtered.absoluteBoundingBox = node.absoluteBoundingBox;
+    if (node.absoluteBoundingBox) {
+      filtered.absoluteBoundingBox = node.absoluteBoundingBox;
+    } else if (typeof node.x === "number" && typeof node.width === "number") {
+      filtered.bbox = { x: node.x, y: node.y, width: node.width, height: node.height };
+    }
+  } else {
+    if (node.absoluteBoundingBox) {
+      filtered.absoluteBoundingBox = node.absoluteBoundingBox;
+    }
+    if (typeof node.width === "number") {
+      filtered.width = Math.round(node.width);
+      filtered.height = Math.round(node.height);
+    }
+    if ("children" in node) filtered.childCount = (node.children || []).length;
   }
 
   if (node.characters) {
-    filtered.characters = node.characters;
+    filtered.characters = o.maxChars ? String(node.characters).slice(0, o.maxChars) : node.characters;
   }
 
-  if (node.style) {
+  if (!lean && node.style) {
     filtered.style = {
       fontFamily: node.style.fontFamily,
       fontStyle: node.style.fontStyle,
@@ -650,19 +747,30 @@ function filterFigmaNode(node) {
   }
 
   if (node.children) {
-    filtered.children = node.children
-      .map((child) => {
-        return filterFigmaNode(child);
-      })
-      .filter((child) => {
-        return child !== null;
-      });
+    if (depth >= maxDepth) {
+      filtered.childrenTruncated = true;
+      filtered.childCount = node.children.length;
+    } else {
+      const kids = node.children.slice(0, maxChildren);
+      filtered.children = kids
+        .map((child) => {
+          return filterFigmaNode(child, { depth: depth + 1, maxDepth: maxDepth, maxChildren: maxChildren, lean: lean, includeVectors: o.includeVectors, maxChars: o.maxChars });
+        })
+        .filter((child) => {
+          return child !== null;
+        });
+      if (node.children.length > kids.length) {
+        filtered.childrenTruncated = true;
+        filtered.childCount = node.children.length;
+      }
+    }
   }
 
   return filtered;
 }
 
-async function getNodeInfo(nodeId) {
+async function getNodeInfo(nodeId, params) {
+  const p = params || {};
   const node = await figma.getNodeByIdAsync(nodeId);
 
   if (!node) {
@@ -673,7 +781,12 @@ async function getNodeInfo(nodeId) {
     format: "JSON_REST_V1",
   });
 
-  return filterFigmaNode(response.document);
+  return filterFigmaNode(response.document, {
+    maxDepth: (p.maxDepth != null) ? p.maxDepth : ((p.lean || p.depth === 1) ? 2 : 12),
+    maxChildren: (p.maxChildren != null) ? p.maxChildren : 100,
+    lean: !!p.lean,
+    maxChars: p.maxChars || 0,
+  });
 }
 
 async function getNodesInfo(nodeIds) {
@@ -1086,7 +1199,13 @@ async function createText(params) {
     fontColor = { r: 0, g: 0, b: 0, a: 1 }, // Default to black
     name = "",
     parentId,
+    family,
+    fontFamily,
+    style,
   } = params || {};
+  // Full font access: allow any family (FIGMA.md wants Plus Jakarta Sans / Fraunces).
+  // Falls back through [requested, Plus Jakarta Sans, Inter] so batch builds never fail.
+  const requestedFamily = family || fontFamily || "Plus Jakarta Sans";
 
   // Map common font weights to Figma font styles
   const getFontStyle = (weight) => {
@@ -1117,13 +1236,25 @@ async function createText(params) {
   const textNode = figma.createText();
   textNode.x = x;
   textNode.y = y;
-  textNode.name = name || text;
+  textNode.name = (name || String(text)).slice(0, 80);
+  const targetStyle = style || getFontStyle(fontWeight);
+  let resolvedFont = null;
+  for (const fam of [requestedFamily, "Plus Jakarta Sans", "Inter"]) {
+    try {
+      await figma.loadFontAsync({ family: fam, style: targetStyle });
+      resolvedFont = { family: fam, style: targetStyle };
+      break;
+    } catch (e) {}
+    // Retry with Regular if the weight style is missing for that family.
+    try {
+      await figma.loadFontAsync({ family: fam, style: "Regular" });
+      resolvedFont = { family: fam, style: "Regular" };
+      break;
+    } catch (e) {}
+  }
+  if (!resolvedFont) throw new Error("No usable font found (tried " + requestedFamily + ", Plus Jakarta Sans, Inter)");
   try {
-    await figma.loadFontAsync({
-      family: "Inter",
-      style: getFontStyle(fontWeight),
-    });
-    textNode.fontName = { family: "Inter", style: getFontStyle(fontWeight) };
+    textNode.fontName = resolvedFont;
     textNode.fontSize = parseInt(fontSize);
   } catch (error) {
     console.error("Error setting font size", error);
@@ -2027,8 +2158,9 @@ async function scanTextNodes(params) {
   const {
     nodeId,
     useChunking = true,
-    chunkSize = 10,
+    chunkSize = 50,
     commandId = generateCommandId(),
+    maxNodes = 2000,
   } = params || {};
 
   const node = await figma.getNodeByIdAsync(nodeId);
@@ -2179,7 +2311,7 @@ async function scanTextNodes(params) {
     const chunkNodes = nodesToProcess.slice(i, chunkEnd);
     const chunkTextNodes = [];
 
-    // Process each node in this chunk
+    // Process each node in this chunk (no per-node delay — fast path)
     for (const nodeInfo of chunkNodes) {
       if (nodeInfo.node.type === "TEXT") {
         try {
@@ -2196,9 +2328,7 @@ async function scanTextNodes(params) {
           // Continue with other nodes
         }
       }
-
-      // Brief delay to allow UI updates and prevent freezing
-      await delay(5);
+      if (allTextNodes.length + chunkTextNodes.length >= maxNodes) break;
     }
 
     // Add results from this chunk
@@ -2224,10 +2354,7 @@ async function scanTextNodes(params) {
       }
     );
 
-    // Small delay between chunks to prevent UI freezing
-    if (i + chunkSize < totalNodes) {
-      await delay(50);
-    }
+    if (allTextNodes.length >= maxNodes) break;
   }
 
   // Send completed progress update
@@ -2285,7 +2412,7 @@ async function collectNodesToProcess(
   }
 }
 
-// Process a single text node
+// Process a single text node (fast: no highlight, no fills mutation)
 async function processTextNode(node, parentPath, depth) {
   if (node.type !== "TEXT") return null;
 
@@ -2317,30 +2444,6 @@ async function processTextNode(node, parentPath, depth) {
       path: parentPath.join(" > "),
       depth: depth,
     };
-
-    // Highlight the node briefly (optional visual feedback)
-    try {
-      const originalFills = JSON.parse(JSON.stringify(node.fills));
-      node.fills = [
-        {
-          type: "SOLID",
-          color: { r: 1, g: 0.5, b: 0 },
-          opacity: 0.3,
-        },
-      ];
-
-      // Brief delay for the highlight to be visible
-      await delay(100);
-
-      try {
-        node.fills = originalFills;
-      } catch (err) {
-        console.error("Error resetting fills:", err);
-      }
-    } catch (highlightErr) {
-      console.error("Error highlighting text node:", highlightErr);
-      // Continue anyway, highlighting is just visual feedback
-    }
 
     return safeTextNode;
   } catch (nodeErr) {
@@ -4126,10 +4229,38 @@ async function createConnections(params) {
     `Starting to create ${connections.length} connections`
   );
   
-  // Get default connector ID from client storage
-  const defaultConnectorId = await figma.clientStorage.getAsync('defaultConnectorId');
+  // Get default connector ID from client storage.
+  // Full-access fallback: if none is set, try to create one programmatically
+  // (works in both Figma Design + FigJam). Only throw the manual guide as last resort.
+  let defaultConnectorId = await figma.clientStorage.getAsync('defaultConnectorId');
   if (!defaultConnectorId) {
-    throw new Error('No default connector set. Please try one of the following options to create connections:\n1. Create a connector in FigJam and copy/paste it to your current page, then run the "set_default_connector" command.\n2. Select an existing connector on the current page, then run the "set_default_connector" command.');
+    // 1) Reuse any existing connector on the page.
+    try {
+      const existing = figma.currentPage.findAllWithCriteria({ types: ['CONNECTOR'] });
+      if (existing && existing.length) {
+        defaultConnectorId = existing[0].id;
+        await figma.clientStorage.setAsync('defaultConnectorId', defaultConnectorId);
+      }
+    } catch (e) {}
+    // 2) Create one via API if available (Design + FigJam both expose createConnector).
+    if (!defaultConnectorId && typeof figma.createConnector === "function") {
+      try {
+        const c = figma.createConnector();
+        c.name = "AIConnect / Default Connector";
+        try { c.strokeWeight = 2; } catch (e) {}
+        try {
+          c.strokes = [{ type: "SOLID", color: { r: 0.0902, g: 0.4196, b: 0.3961 } }];
+        } catch (e) {}
+        figma.currentPage.appendChild(c);
+        defaultConnectorId = c.id;
+        await figma.clientStorage.setAsync('defaultConnectorId', defaultConnectorId);
+      } catch (e) {
+        console.error("Auto-create connector failed:", e);
+      }
+    }
+  }
+  if (!defaultConnectorId) {
+    throw new Error('No default connector set and auto-create failed. Options:\n1. In FigJam draw 1 connector, copy/paste to this page, then run "set_default_connector".\n2. Select an existing connector, then run "set_default_connector".\n(Plugin now tries figma.createConnector() automatically first.)');
   }
   
   // Get the default connector
@@ -4396,27 +4527,36 @@ async function getStatus() {
       variableCount = vars.length;
     }
   } catch (e) {}
+  let pages = [];
+  try {
+    pages = (figma.root.children || []).map((p) => ({
+      id: p.id, name: p.name, childCount: (p.children || []).length,
+      isCurrent: p.id === page.id,
+    }));
+  } catch (e) {}
   return {
     ok: true,
     editorType: figma.editorType,
     fileKey: typeof figma.fileKey !== "undefined" ? figma.fileKey : null,
     documentName: figma.root && figma.root.name,
     pageCount: figma.root ? figma.root.children.length : 0,
+    pages,
     currentPage: { id: page.id, name: page.name, childCount: page.children.length },
     selectionCount: page.selection.length,
     selectionIds: page.selection.map((n) => n.id),
     apis: {
       variables: !!figma.variables,
       base64Decode: !!figma.base64Decode,
+      createConnector: typeof figma.createConnector === "function",
     },
     collectionCount,
     variableCount,
     consoleBuffered: __consoleBuffer.length,
-    pluginVersion: "0.5.0",
+    pluginVersion: "0.6.0-full",
     hint: page.selection.length
       ? "Selection ready — get_css / get_page_snapshot / read_my_design will target it. Build with batch_ops."
       : "Nothing selected. Build a section in one shot with batch_ops, then get_page_snapshot to verify.",
-    workflow: ["get_status", "batch_ops (build in bulk, use @ref)", "get_page_snapshot (verify)", "get_variables/export_tokens (tokens)", "get_css (dev handoff)"],
+    workflow: ["get_status", "list_pages/set_page (multi-page)", "batch_ops (build in bulk, use @ref)", "get_page_snapshot (verify)", "get_variables/export_tokens (tokens)", "get_css (dev handoff)"],
   };
 }
 

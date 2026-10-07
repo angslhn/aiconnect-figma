@@ -5,6 +5,28 @@ All notable changes to **AIConnect for Figma** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] — 2026-10-07
+
+### Added — Full-project read access
+
+- **New tools:** `list_pages`, `set_page({pageId})`, `get_page_info({pageId, topLimit})`.
+- **`get_document_info({includeChildren, topLimit})`** now lists ALL pages with
+  `childCount` plus top-level frames (sizes + childCount), not just the active page.
+- **`get_status`** now returns the `pages[]` overview and `apis.createConnector`.
+- **Plugin manifest:** removed `documentAccess: dynamic-page` for full document access.
+
+### Changed — Faster reads, fuller writes
+
+- **`get_node_info({lean, maxDepth, maxChildren, maxChars})`** for depth-limited
+  lean reads of large frames (e.g. `lean:true, maxDepth:2`).
+- **`create_text({family})`** with fallback chain
+  `[requested, Plus Jakarta Sans, Inter]`; truncates layer names to 80 chars.
+- **`scan_text_nodes({chunkSize:50, maxNodes:2000})`** fast path: no fill
+  highlighting, no per-node delays.
+- **`create_connections`** auto-reuses an existing connector or auto-creates one
+  via `figma.createConnector()` before asking for a manual FigJam paste.
+- All new comments are in English.
+
 ## [1.3.0] — 2026-06-25
 
 ### Fixed

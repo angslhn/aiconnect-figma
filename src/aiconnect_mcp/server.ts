@@ -146,11 +146,14 @@ const RELAY_PORT = Number(process.env.PORT || process.env.AICONNECT_RELAY_PORT |
 // Document Info Tool
 server.tool(
   "get_document_info",
-  "Get detailed information about the current Figma document",
-  {},
-  async () => {
+  "Get detailed information about the current Figma document (all pages + top-level frames). Full-project access.",
+  {
+    includeChildren: z.boolean().optional().describe("Include top-level frames of the current page (default true)"),
+    topLimit: z.number().optional().describe("Max top-level children to return (default 50, max 200)"),
+  },
+  async ({ includeChildren, topLimit }: any) => {
     try {
-      const result = await sendCommandToFigma("get_document_info");
+      const result = await sendCommandToFigma("get_document_info", { includeChildren, topLimit });
       return {
         content: [
           {
@@ -168,6 +171,59 @@ server.tool(
               }`,
           },
         ],
+      };
+    }
+  }
+);
+
+server.tool(
+  "list_pages",
+  "List ALL pages in the current Figma file (id, name, childCount). Requires plugin with full document access.",
+  {},
+  async () => {
+    try {
+      const result = await sendCommandToFigma("list_pages", {});
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: `Error listing pages: ${error instanceof Error ? error.message : String(error)}` }],
+      };
+    }
+  }
+);
+
+server.tool(
+  "set_page",
+  "Switch the editor to another page by ID. Returns the newly active page.",
+  {
+    pageId: z.string().describe("Target PAGE id (from list_pages or get_document_info.pages)"),
+  },
+  async ({ pageId }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_page", { pageId });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: `Error setting page: ${error instanceof Error ? error.message : String(error)}` }],
+      };
+    }
+  }
+);
+
+server.tool(
+  "get_page_info",
+  "Get info about one page (children overview) without switching to it.",
+  {
+    pageId: z.string().optional().describe("PAGE id; omit for the current page"),
+    topLimit: z.number().optional().describe("Max children to return (default 50, max 200)"),
+  },
+  async ({ pageId, topLimit }: any) => {
+    try {
+      const result = await sendCommandToFigma("get_page_info", { pageId, topLimit });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return {
+        content: [{ type: "text", text: `Error getting page info: ${error instanceof Error ? error.message : String(error)}` }],
       };
     }
   }
@@ -292,16 +348,20 @@ server.tool(
   }
 );
 
-// Node Info Tool
+// Node Info Tool (supports lean/depth-limited reads for large designs)
 server.tool(
   "get_node_info",
-  "Get detailed information about a specific node in Figma",
+  "Get detailed information about a specific node in Figma. Use lean:true + maxDepth:2 for a fast overview of large frames.",
   {
     nodeId: z.string().describe("The ID of the node to get information about"),
+    lean: z.boolean().optional().describe("Return a compact summary (sizes + childCount, no fills)"),
+    maxDepth: z.number().optional().describe("Max child depth to include (default 12)"),
+    maxChildren: z.number().optional().describe("Max children per level (default 100)"),
+    maxChars: z.number().optional().describe("Truncate text characters to this length (0 = full)"),
   },
-  async ({ nodeId }: any) => {
+  async ({ nodeId, lean, maxDepth, maxChildren, maxChars }: any) => {
     try {
-      const result = await sendCommandToFigma("get_node_info", { nodeId });
+      const result = await sendCommandToFigma("get_node_info", { nodeId, lean, maxDepth, maxChildren, maxChars });
       return {
         content: [
           {
@@ -672,12 +732,16 @@ server.tool(
       .string()
       .optional()
       .describe("Semantic layer name for the text node"),
+    family: z
+      .string()
+      .optional()
+      .describe("Font family, e.g. 'Plus Jakarta Sans', 'Fraunces', 'Inter'. Defaults to Plus Jakarta Sans with Inter fallback."),
     parentId: z
       .string()
       .optional()
       .describe("Optional parent node ID to append the text to"),
   },
-  async ({ x, y, text, fontSize, fontWeight, fontColor, name, parentId }: any) => {
+  async ({ x, y, text, fontSize, fontWeight, fontColor, name, family, parentId }: any) => {
     try {
       const result = await sendCommandToFigma("create_text", {
         x,
@@ -687,6 +751,7 @@ server.tool(
         fontWeight: fontWeight || 400,
         fontColor: fontColor || { r: 0, g: 0, b: 0, a: 1 },
         name: name || "Text",
+        family,
         parentId,
       });
       const typedResult = result as { name: string; id: string };
@@ -1754,11 +1819,13 @@ server.prompt(
 // Text Node Scanning Tool
 server.tool(
   "scan_text_nodes",
-  "Scan all text nodes in the selected Figma node",
+  "Scan all text nodes in the selected Figma node (fast chunked scan, no visual side effects)",
   {
     nodeId: z.string().describe("ID of the node to scan"),
+    chunkSize: z.number().optional().describe("Nodes per chunk (default 50)"),
+    maxNodes: z.number().optional().describe("Stop after this many text nodes (default 2000)"),
   },
-  async ({ nodeId }: any) => {
+  async ({ nodeId, chunkSize, maxNodes }: any) => {
     try {
       // Initial response to indicate we're starting the process
       const initialStatus = {
@@ -1770,7 +1837,8 @@ server.tool(
       const result = await sendCommandToFigma("scan_text_nodes", {
         nodeId,
         useChunking: true,  // Enable chunking on the plugin side
-        chunkSize: 10       // Process 10 nodes at a time
+        chunkSize: chunkSize || 50, // Process 50 nodes at a time (fast path)
+        maxNodes: maxNodes || 2000,
       });
 
       // If the result indicates chunking was used, format the response accordingly
@@ -2939,12 +3007,18 @@ type FigmaCommand =
   | "create_connections"
   | "set_focus"
   | "set_selections"
-  | "batch_ops";
+  | "batch_ops"
+  | "list_pages"
+  | "set_page"
+  | "get_page_info";
 
 type CommandParams = {
-  get_document_info: Record<string, never>;
+  get_document_info: { includeChildren?: boolean; topLimit?: number };
+  list_pages: Record<string, never>;
+  set_page: { pageId: string };
+  get_page_info: { pageId?: string; topLimit?: number };
   get_selection: Record<string, never>;
-  get_node_info: { nodeId: string };
+  get_node_info: { nodeId: string; lean?: boolean; maxDepth?: number; maxChildren?: number; maxChars?: number };
   get_nodes_info: { nodeIds: string[] };
   create_rectangle: {
     x: number;
@@ -2973,6 +3047,7 @@ type CommandParams = {
     fontWeight?: number;
     fontColor?: { r: number; g: number; b: number; a?: number };
     name?: string;
+    family?: string;
     parentId?: string;
   };
   set_fill_color: {
@@ -3048,8 +3123,9 @@ type CommandParams = {
   };
   scan_text_nodes: {
     nodeId: string;
-    useChunking: boolean;
-    chunkSize: number;
+    useChunking?: boolean;
+    chunkSize?: number;
+    maxNodes?: number;
   };
   set_multiple_text_contents: {
     nodeId: string;
