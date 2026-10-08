@@ -184,6 +184,7 @@ SEARCH  → search_nodes / get_component_sets (reuse what already exists!)
 BUILD   → batch_ops in one round-trip (auto-layout LAST, parent text into frames)
 VERIFY  → get_page_snapshot, fix, repeat
 POLISH  → audit_layout (off-grid), check_contrast, get_css for handoff
+CODE    → export_code to TSX (tailwind/css/inline), review assumptions first
 TOKENS  → get_variables → create_variable* → bind_variable → export_tokens
 ```
 
@@ -216,6 +217,11 @@ text against its background and auto-fix anything failing WCAG AA.
 ```
 
 ```text
+Convert my hero frame to a React component with export_code (tailwind),
+review the assumptions list, then fix anything it flagged as skipped.
+```
+
+```text
 Build a 4-feature "Why us" section: each feature is an Iconify icon
 (insert_icon), a heading, and body text, in a responsive auto-layout row.
 Suggest a font pairing first (suggest_fonts) and apply it.
@@ -236,6 +242,7 @@ Most of these are behind a paid Figma seat or a paid plugin. With AIConnect they
 | **Font‑pairing** plugins                                      | Typeface pairing recommendations                                                                    | `suggest_fonts`                                                      |
 | **Accessibility / contrast** plugins                          | WCAG contrast checks with auto‑fix suggestions                                                      | `check_contrast`                                                     |
 | **Lint / spacing-checker** plugins                            | Off-grid layout audit (positions, sizes, radii vs your grid)                                        | `audit_layout`                                                       |
+| **Design-to-code** plugins                                   | Local Figma→TSX export (tailwind/css/inline) with assumptions listed                               | `export_code`                                                        |
 
 ---
 
