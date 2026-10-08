@@ -11,7 +11,7 @@ const state = {
 
 // Fork identity. PLUGIN_VERSION must match package.json; PLUGIN_COMMANDS must
 // match the handleCommand case labels below (both enforced by tests).
-const PLUGIN_VERSION = "1.6.0";
+const PLUGIN_VERSION = "1.6.1";
 const PLUGIN_COMMANDS = [
   "get_document_info", "list_pages", "set_page", "get_page_info",
   "get_selection", "get_node_info", "get_nodes_info", "read_my_design",

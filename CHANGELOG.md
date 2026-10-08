@@ -5,6 +5,20 @@ All notable changes to **AIConnect for Figma** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] — 2026-10-08
+
+### Security
+
+- Relay token compared with `crypto.timingSafeEqual` (constant-time) in all
+  three relays instead of `!==`.
+- Token file locked down to the current user on Windows via `icacls`
+  (best-effort, never blocks startup); `mode 0o600` is a no-op there.
+- Tests now enforce token hygiene: the secret may only appear in `?token=`
+  URLs (never logs) and must use the constant-time compare.
+- New automated gate tests (`npm run test:security`, run in CI).
+
+No new tools; no wire-format changes.
+
 ## [1.6.0] — 2026-10-08
 
 Covers everything since 1.4.0 (see git history): new tools, relay security,
