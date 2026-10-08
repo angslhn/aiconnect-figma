@@ -83,7 +83,7 @@ if (useZipCli) {
 // 4. Verify the archive listing matches the manifest above.
 const want = ["code.js", "manifest.json", "package.json", "server.cjs", "ui.html"].map((f) => `${FOLDER}/${f}`).sort();
 if (useZipCli) {
-  const got = execFileSync("unzip", ["-Z1", ZIP], { encoding: "utf8" }).split("\n").map((s) => s.trim()).filter((s) => !s.endsWith("/")).sort();
+  const got = execFileSync("unzip", ["-Z1", ZIP], { encoding: "utf8" }).split("\n").map((s) => s.trim()).filter((s) => s && !s.endsWith("/")).sort();
   if (JSON.stringify(got) !== JSON.stringify(want)) fail(`unexpected zip contents: ${got.join(", ")}`);
   console.log(`zip contents OK: ${got.join(", ")}`);
 } else {
