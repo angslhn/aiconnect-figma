@@ -15,7 +15,7 @@ Open-source · fully local · no cloud, no telemetry · works with Claude Code, 
 [![Local-first](https://img.shields.io/badge/100%25-local%20%C2%B7%20no%20telemetry-2ea44f.svg)](#why-aiconnect)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178c6.svg?logo=typescript&logoColor=white)](#)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#-contributing)
-[![Stars](https://img.shields.io/github/stars/angslhn/aiconnect-figma?style=social)](https://github.com/angslhn/aiconnect-figma)
+[![Stars](https://img.shields.io/github/stars/angslhn/aiconnect-figma-mcp?style=social)](https://github.com/angslhn/aiconnect-figma-mcp)
 
 <img src="assets/aiconnect-cover-1920x960.png" width="100%" alt="AIConnect cover" />
 
@@ -63,7 +63,7 @@ Add this to your MCP client config (Claude Code: `.mcp.json`, Cursor: `mcp.json`
 ### Option B · From source (dev / hacking)
 
 ```bash
-git clone https://github.com/angslhn/aiconnect-figma
+git clone https://github.com/angslhn/aiconnect-figma-mcp
 cd aiconnect-figma
 bun install && bun run build        # or: npm install && npm run build
 ```
@@ -96,7 +96,7 @@ The MCP server hosts the `ws://localhost:3055` relay itself on startup (if the p
 
 ### 3 · Install the Figma plugin (once)
 
-1. **[⬇️ Download `aiconnect-figma-plugin.zip`](https://github.com/angslhn/aiconnect-figma/releases/latest)** and unzip it — or import straight from source via `src/figma_plugin/manifest.json` (no download needed).
+1. **[⬇️ Download `aiconnect-figma-plugin.zip`](https://github.com/angslhn/aiconnect-figma-mcp/releases/latest)** and unzip it — or import straight from source via `src/figma_plugin/manifest.json` (no download needed).
 2. In the **Figma desktop app** (not the browser): menu → **Plugins → Development → Import plugin from manifest…** → pick the unzipped `manifest.json`.
 3. Run **Plugins → Development → AIConnect for Figma**.
 
