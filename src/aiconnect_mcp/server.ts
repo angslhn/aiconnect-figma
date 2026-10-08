@@ -12,10 +12,11 @@ import {
   listBrandPresets, buildBrand, searchIcons, fetchIconSvg, searchImages,
   generateContent, parseTokensFile, auditLayout,
 } from "./design_intel.js";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 
 // Define TypeScript interfaces for Figma responses
 interface FigmaResponse {
@@ -178,7 +179,7 @@ function getRelayToken(): string {
   if (fromEnv) return fromEnv;
   try {
     const saved = readFileSync(RELAY_TOKEN_FILE, 'utf8').trim();
-    if (saved) return saved;
+    if (saved) { lockTokenFileWin(RELAY_TOKEN_FILE); return saved; }
   } catch { /* first run: create it below */ }
   const fresh = randomBytes(32).toString('hex');
   try {
@@ -186,9 +187,30 @@ function getRelayToken(): string {
   } catch (err) {
     logger.warn(`Could not persist relay token to ${RELAY_TOKEN_FILE}: ${err instanceof Error ? err.message : String(err)}`);
   }
+  lockTokenFileWin(RELAY_TOKEN_FILE);
   return fresh;
 }
+
+// Windows: mode 0o600 is a no-op there, so best-effort restrict the token
+// file to the current user via icacls. Never throws, never blocks startup.
+function lockTokenFileWin(file: string): void {
+  if (process.platform !== 'win32') return;
+  try {
+    const user = (process.env.USERNAME || '').trim();
+    if (!user || !existsSync(file)) return;
+    execFileSync('icacls', [file, '/inheritance:r', '/grant:r', `${user}:F`], { stdio: 'ignore' });
+  } catch { /* best-effort only */ }
+}
 const RELAY_TOKEN = getRelayToken();
+
+// Constant-time token comparison (never `===`/`!==` on secrets: those
+// short-circuit and leak prefix info through timing).
+function tokensEqual(presented: string | null | undefined, expected: string): boolean {
+  const a = Buffer.from(presented || '');
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
 
 // Document Info Tool
 server.tool(
@@ -3458,7 +3480,7 @@ function startEmbeddedRelay(port: number = RELAY_PORT): Promise<void> {
         try {
           token = new URL(info.req.url || '/', 'ws://relay').searchParams.get('token') || '';
         } catch { /* malformed URL: reject below */ }
-        if (!token || token !== RELAY_TOKEN) {
+        if (!tokensEqual(token, RELAY_TOKEN)) {
           done(false, 401, 'Unauthorized relay token');
           return;
         }

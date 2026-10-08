@@ -3,10 +3,11 @@
 // Copyright (c) 2026 Prakhar Gupta.
 
 import { Server, ServerWebSocket } from "bun";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 
 const PORT = Number(process.env.PORT || process.env.AICONNECT_RELAY_PORT || 3055);
 // Loopback only by default; override with AICONNECT_RELAY_HOST at your own risk.
@@ -21,7 +22,7 @@ function getToken(): string {
   if (fromEnv) return fromEnv;
   try {
     const saved = readFileSync(TOKEN_FILE, "utf8").trim();
-    if (saved) return saved;
+    if (saved) { lockTokenFileWin(TOKEN_FILE); return saved; }
   } catch { /* first run */ }
   const fresh = randomBytes(32).toString("hex");
   try {
@@ -29,9 +30,29 @@ function getToken(): string {
   } catch (err) {
     console.error("Could not persist relay token:", err);
   }
+  lockTokenFileWin(TOKEN_FILE);
   return fresh;
 }
+
+// Windows: mode 0o600 is a no-op there, so best-effort restrict the token
+// file to the current user via icacls. Never throws, never blocks startup.
+function lockTokenFileWin(file: string): void {
+  if (process.platform !== "win32") return;
+  try {
+    const user = (process.env.USERNAME || "").trim();
+    if (!user || !existsSync(file)) return;
+    execFileSync("icacls", [file, "/inheritance:r", "/grant:r", `${user}:F`], { stdio: "ignore" });
+  } catch { /* best-effort only */ }
+}
 const TOKEN = getToken();
+
+// Constant-time token comparison (never `===` on secrets).
+function tokensEqual(presented: string | null, expected: string): boolean {
+  const a = Buffer.from(presented || "");
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
 
 // Store clients by channel
 const channels = new Map<string, Set<ServerWebSocket<any>>>();
@@ -85,7 +106,7 @@ const server = Bun.serve({
     if (origin && origin !== "null") {
       return new Response("Forbidden origin", { status: 403 });
     }
-    if (url.searchParams.get("token") !== TOKEN) {
+    if (!tokensEqual(url.searchParams.get("token"), TOKEN)) {
       return new Response("Unauthorized relay token", { status: 401 });
     }
     // Handle CORS preflight
