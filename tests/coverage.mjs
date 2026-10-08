@@ -89,4 +89,35 @@ if (failed) {
   process.exit(1);
 }
 console.log(`DOCS IN SYNC ✅  (README counts, versions, and command list match code)`);
+
+// ---- Relay token hygiene (PROMPT 4): the secret value must only ever be
+// interpolated into a ?token= query URL — never into a log line.
+const secretFiles = [
+  "src/aiconnect_mcp/server.ts",
+  "scripts/relay.mjs",
+  "src/socket.ts",
+  "src/figma_plugin/ui.html",
+];
+for (const f of secretFiles) {
+  const src = readFileSync(join(root, f), "utf8");
+  for (const m of src.matchAll(/[$]{(RELAY_TOKEN|TOKEN|relayToken)}/g)) {
+    const lineStart = src.lastIndexOf("\n", m.index) + 1;
+    const lineEnd = src.indexOf("\n", m.index);
+    const line = src.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
+    if (!line.includes("?token=")) fail(`${f} interpolates a relay secret outside a ?token= URL: ${line.trim().slice(0, 100)}`);
+  }
+}
+// Comparisons against the secret must use tokensEqual (constant-time).
+for (const f of ["src/aiconnect_mcp/server.ts", "scripts/relay.mjs", "src/socket.ts"]) {
+  const src = readFileSync(join(root, f), "utf8");
+  for (const m of src.matchAll(/(token\s*!==?\s*(?:RELAY_TOKEN|TOKEN)|(?:RELAY_TOKEN|TOKEN)\s*!==?\s*token)/g)) {
+    fail(`${f} compares the relay token with ===/!== instead of tokensEqual`);
+  }
+}
+
+if (failed) {
+  console.log(`\nSECURITY HYGIENE FAILED ✗`);
+  process.exit(1);
+}
+console.log(`TOKEN HYGIENE ✅  (secret only in ?token= URLs, constant-time compare)`);
 process.exit(0);
