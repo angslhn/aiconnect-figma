@@ -12,6 +12,7 @@ import {
   listBrandPresets, buildBrand, searchIcons, fetchIconSvg, searchImages,
   generateContent, parseTokensFile, auditLayout,
 } from "./design_intel.js";
+import { exportNodeToCode } from "./codegen.js";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
@@ -3161,7 +3162,8 @@ type FigmaCommand =
   | "boolean_op"
   | "set_mask"
   | "set_hyperlink"
-  | "audit_layout";
+  | "audit_layout"
+  | "export_code";
 
 type CommandParams = {
   get_document_info: { includeChildren?: boolean; topLimit?: number };
@@ -3337,6 +3339,7 @@ type CommandParams = {
   set_mask: { nodeId: string; isMask: boolean };
   set_hyperlink: { nodeId: string; url?: string; start?: number; end?: number };
   audit_layout: { nodeId: string; grid?: number; maxDepth?: number; maxOffenders?: number };
+  export_code: { nodeId: string; styling?: string; componentName?: string; maxDepth?: number };
 
 };
 
@@ -4613,6 +4616,30 @@ server.tool(
       return { content: [{ type: "text", text: JSON.stringify(report) }] };
     } catch (error) {
       return { content: [{ type: "text", text: `Error auditing layout: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "export_code",
+  "LOCAL design-to-code: read a Figma node subtree and emit a static React TSX component — no cloud, no AI credits. " +
+    "styling tailwind (default, arbitrary-value classes), css (companion stylesheet), or inline (style objects). " +
+    "Frames become positioned divs, TEXT becomes <p>, ellipses round-full, instances become <Name /> placeholders. " +
+    "Always returns an assumptions list (vectors omitted, absolute positioning, no interactivity) — review before shipping.",
+  {
+    nodeId: z.string().describe("Root frame/component to convert"),
+    styling: z.enum(["tailwind", "css", "inline"]).optional().describe("Styling output (default tailwind)"),
+    componentName: z.string().optional().describe("Component name (defaults to the layer name)"),
+    maxDepth: z.number().optional().describe("Subtree depth to read (default 12)"),
+  },
+  async ({ nodeId, styling, componentName, maxDepth }: any) => {
+    try {
+      const info: any = await sendCommandToFigma("get_node_info", { nodeId, maxDepth: maxDepth || 12, maxChildren: 100 });
+      const doc = info && info.document ? info.document : info;
+      const result = exportNodeToCode({ id: nodeId, ...(doc || {}) }, { styling: styling || "tailwind", componentName });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error exporting code: ${error instanceof Error ? error.message : String(error)}` }] };
     }
   }
 );

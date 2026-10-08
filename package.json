@@ -60,6 +60,7 @@
     "build:watch": "tsup --watch",
     "dev": "bun run build:watch",
     "test": "bun tests/coverage.mjs",
+    "test:unit": "bun tests/codegen.mjs",
     "test:security": "node tests/security.mjs",
     "test:smoke": "bun tests/smoke.mjs",
     "prepublishOnly": "bun run build",

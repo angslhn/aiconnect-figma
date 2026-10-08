@@ -247,7 +247,7 @@ Most of these are behind a paid Figma seat or a paid plugin. With AIConnect they
 | 🤝 **Client‑agnostic**          | Use it with Claude Code, Cursor, or any MCP client — not tied to one editor.                                                                                                                                                                                                                |
 | ⚡ **`batch_ops`**              | Build a whole page/section in **one** round‑trip instead of 100+ individual calls.                                                                                                                                                                                                          |
 | 🚀 **Near‑zero latency**        | Calls run over `localhost`, not a cloud hop — **~1 ms median, ~4 ms p90** per call (see [Performance](#-performance)).                                                                                                                                                                      |
-| 🎨 **Rich commands**            | Pages, components & variants, styles, images, fonts, gradients, effects, SVG, auto‑layout, booleans, masks, hyperlinks, clone, reorder — **88 tools**.                                                                                                                                      |
+| 🎨 **Rich commands**            | Pages, components & variants, styles, images, fonts, gradients, effects, SVG, auto‑layout, booleans, masks, hyperlinks, clone, reorder, TSX export — **89 tools**.                                                                                                                                     |
 | 🎯 **Design intelligence**      | Keyless & local: `apply_brand` (full token systems from a preset/brand/color), OKLCH `generate_palette`/`generate_theme`, WCAG `check_contrast` (+auto‑fix), `audit_layout`, `suggest_fonts`, 200k+ `insert_icon` (Iconify), `search_images` (Openverse), offline `fill_realistic_content`. |
 | 🎟️ **Design tokens & Dev Mode** | First‑class Figma variables (`create_variable`, `bind_variable`, `export_tokens`, `import_tokens`), local styles (`create_style`, `apply_style`), plus `get_css` — Dev Mode‑equivalent inspect **without a paid Dev seat**.                                                                 |
 | 🔍 **Debuggable**               | `get_status`, `get_console_logs`, and `get_page_snapshot` — the agent literally sees its work and self-corrects.                                                                                                                                                                            |
@@ -285,7 +285,7 @@ batch_ops({
 ## 🧰 Tools
 
 <details>
-<summary><b>88 tools across reads, create/edit, style, layout, batch, tokens, debug &amp; design intelligence</b></summary>
+<summary><b>89 tools across reads, create/edit, style, layout, batch, tokens, debug, design-to-code &amp; design intelligence</b></summary>
 
 <br/>
 
@@ -299,7 +299,7 @@ batch_ops({
 
 **Design tokens / variables** — `get_variables`, `create_variable_collection`, `create_variable`, `set_variable_value`, `bind_variable`, `export_tokens` (DTCG/CSS/Tailwind), `import_tokens` (DTCG/Tailwind/CSS file → variables)
 
-**Dev & debug** — `get_css` (Dev Mode‑equivalent, no paid seat), `get_status`, `get_console_logs`, `get_page_snapshot`, `audit_layout` (local off‑grid check)
+**Dev & debug** — `get_css` (Dev Mode‑equivalent, no paid seat), `get_status`, `get_console_logs`, `get_page_snapshot`, `audit_layout` (local off‑grid check), `export_code` (local Figma→TSX: tailwind/css/inline)
 
 **Design intelligence** (keyless, local) — `apply_brand`, `list_brand_presets`, `generate_palette`, `generate_theme`, `check_contrast`, `suggest_fonts`, `search_icons`, `insert_icon`, `search_images`, `fill_realistic_content` (offline placeholder data)
 
