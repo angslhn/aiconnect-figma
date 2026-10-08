@@ -91,13 +91,26 @@ let lastObservedChannel: string | null = null;
 // external relay, where we don't see joins directly).
 let channelDiscoveryResolver: ((v: { channels: string[]; lastJoined: string | null }) => void) | null = null;
 
+// Server version is read from package.json (single source of truth) — never
+// hardcoded. dist/server.js sits directly under <root>/dist/, so
+// ../package.json is the package root in both source builds and npm installs.
+function readPackageVersion(): string {
+  try {
+    const pkgUrl = new URL('../package.json', import.meta.url);
+    const pkg = JSON.parse(readFileSync(pkgUrl, 'utf8'));
+    if (pkg && typeof pkg.version === 'string' && pkg.version) return pkg.version;
+  } catch { /* e.g. exotic install layout: fall through */ }
+  return 'unknown';
+}
+const SERVER_VERSION = readPackageVersion();
+
 // Create MCP server. The `instructions` block is surfaced to the agent on
 // connect — it teaches the high-leverage workflow so the tools are used well,
 // not one-at-a-time. This is the single biggest usability lever for an MCP.
 const server = new McpServer(
   {
     name: "AIConnectMCP",
-    version: "1.3.0",
+    version: SERVER_VERSION,
   },
   {
     instructions: [
@@ -3584,6 +3597,20 @@ function connectToFigma(port: number = RELAY_PORT) {
         return;
       }
 
+      // Fork-identity hello from the plugin (sent as a normal channel
+      // message right after join — no new wire type needed).
+      const helloPayload = json && (json as any).message && (json as any).message.hello;
+      if (helloPayload && typeof (json as any).channel === 'string' && (json as any).channel) {
+        const channel = (json as any).channel as string;
+        channelPeerInfo.set(channel, {
+          pluginVersion: (helloPayload.pluginVersion as string) || null,
+          commands: Array.isArray(helloPayload.commands) ? helloPayload.commands.map(String) : [],
+        });
+        const peer = channelPeerInfo.get(channel)!;
+        logger.info(`Plugin hello on "${channel}": version ${peer.pluginVersion || 'unknown'}, ${peer.commands.length} commands`);
+        return;
+      }
+
       // Handle progress updates
       if (json.type === 'progress_update') {
         const progressData = json.message.data as CommandProgressUpdate;
@@ -3789,6 +3816,10 @@ function sendCommandToFigma(
   });
 }
 
+// Fork-identity reported by the plugin on join (see ui.html hello message).
+// Lets get_status show both sides and warn on mismatch (stale plugin build).
+const channelPeerInfo = new Map<string, { pluginVersion: string | null; commands: string[] }>();
+
 // Status / diagnostics — orient the agent in one call
 server.tool(
   "get_status",
@@ -3797,8 +3828,22 @@ server.tool(
   {},
   async () => {
     try {
-      const result = await sendCommandToFigma("get_status");
-      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      const result: any = await sendCommandToFigma("get_status");
+      const peer = (typeof currentChannel === 'string' && currentChannel) ? channelPeerInfo.get(currentChannel) : undefined;
+      const pluginVersion = (peer && peer.pluginVersion) || null;
+      const enriched = {
+        ...(result && typeof result === 'object' ? result : { result }),
+        serverVersion: SERVER_VERSION,
+        pluginVersion,
+        pluginCommands: peer ? peer.commands.length : null,
+        versionMismatch:
+          pluginVersion && pluginVersion !== SERVER_VERSION
+            ? `Server ${SERVER_VERSION} != plugin ${pluginVersion}: reimport the plugin from this repo's src/figma_plugin/manifest.json so both sides match.`
+            : pluginVersion
+              ? null
+              : 'Plugin did not report a version (old plugin build?) — reimport from src/figma_plugin/manifest.json.',
+      };
+      return { content: [{ type: "text", text: JSON.stringify(enriched) }] };
     } catch (error) {
       return { content: [{ type: "text", text: `Error getting status: ${error instanceof Error ? error.message : String(error)}` }] };
     }
@@ -4602,7 +4647,7 @@ server.tool(
 
 // Start the server
 async function main() {
-  // `aiconnect-figma-mcp relay` runs just the relay (a long-lived broker), useful
+  // `aiconnect-figma relay` runs just the relay (a long-lived broker), useful
   // when sharing one relay across several agents. The normal MCP server below
   // already hosts the relay itself, so this subcommand is rarely needed.
   if (args.includes('relay')) {
