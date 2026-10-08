@@ -90,6 +90,49 @@ Then point your MCP client at the build output (absolute path):
 
 > Or run `./scripts/setup.sh` — it builds, writes a correctly-pathed `.mcp.json`, and prints the plugin steps. Idempotent, safe to re-run.
 
+### Option C · Release zip + local agent (no build tools, e.g. opencode)
+
+If you just want to *use* it (no Node/Bun toolchain), grab a prebuilt bundle:
+
+1. **[⬇️ Download `aiconnect-figma-plugin.zip`](https://github.com/angslhn/aiconnect-figma-mcp/releases/latest)** from the fork's latest release.
+   (No release published yet? Fall back to [Option B](#option-b--from-source-dev--hacking) and run `npm run build:standalone` — it produces the same single-file `server.cjs`.)
+2. **Extract the zip into a `figma/` folder** in your project, so you get:
+   ```
+   <project>/figma/aiconnect-plugin/
+   ├── server.cjs        # MCP server, single file — no npm install needed
+   ├── code.js           # Figma plugin main thread
+   ├── ui.html           # Figma plugin panel
+   ├── manifest.json     # ← import this into Figma
+   └── setcharacters.js
+   ```
+3. **Import into Figma desktop**: Plugins → Development → Import plugin from manifest… → pick that `manifest.json`. Then run Plugins → Development → AIConnect for Figma.
+4. **Get your relay token (new users, once):** start your agent once so the server boots — it auto-creates the token file. Then read it:
+   ```powershell
+   # Windows (PowerShell)
+   Get-Content $HOME\.aiconnect-relay-token
+   ```
+   ```bash
+   # macOS / Linux
+   cat ~/.aiconnect-relay-token
+   ```
+   Paste the value into the plugin panel's **Relay token** field and connect. It is remembered — you only do this once per machine (again only if the token file is deleted or a different `AICONNECT_RELAY_TOKEN` is used).
+5. **Point your agent at it.** For opencode, create `opencode.json` in your project root:
+   ```jsonc
+   {
+     "$schema": "https://opencode.ai/config.json",
+     "mcp": {
+       "servers": {
+         "aiconnect-figma": {
+           "type": "local",
+           "command": ["node", "figma/aiconnect-plugin/server.cjs"]
+         }
+       }
+     }
+   }
+   ```
+   (Any MCP-capable agent works — Claude Code, Cursor, etc. — with the equivalent local-command config pointing at `server.cjs`.)
+6. **Restart the agent session** so the new tools load, then `join_channel` (no arguments) and confirm with `get_status` — `serverVersion` and `pluginVersion` should match.
+
 ### 2 · Relay (nothing to do)
 
 The MCP server hosts the `ws://localhost:3055` relay itself on startup (if the port is taken, it joins the existing relay instead). **There is no second process to run.** Only if you want one relay shared across several agents: `npx -y aiconnect-figma relay` (or `bun run relay`).
