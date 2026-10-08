@@ -32,7 +32,7 @@ Open-source · fully local · no cloud, no telemetry · works with Claude Code, 
 > No hand‑placed layers. An agent was asked to design a hard‑water hair‑care brand and built it all **directly in Figma** through AIConnect — a landing page, a product page, and four full design‑direction boards, each assembled with `batch_ops`.
 
 <div align="center">
-<img src="assets/screenshots/output.png" width="100%" alt="A full brand designed by an AI agent in Figma through AIConnect — landing page, product page, and design-direction boards" />
+<img src="assets/screenshots/output.png" width="750" height="750" alt="A full brand designed by an AI agent in Figma through AIConnect — landing page, product page, and design-direction boards" />
 </div>
 
 ---
