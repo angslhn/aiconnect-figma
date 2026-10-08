@@ -43,9 +43,9 @@ There are **three pieces**: the MCP server (what the agent talks to), the Figma 
 
 **Prerequisites:** [Node ≥ 18](https://nodejs.org) (or [Bun](https://bun.sh)) and the free **[Figma desktop app](https://www.figma.com/downloads/)** (the browser version can't import dev plugins).
 
-### Option A · `npx` (available after first publish)
+### Option A · No clone — use `npx` (fastest)
 
-> ⏳ The `aiconnect-figma` npm package is **not published yet** — `npx -y aiconnect-figma` will 404 until then, and the name could be taken by someone else in the meantime. Use [Option B](#option-b--from-source-dev--hacking) or [Option C](#option-c--release-zip--local-agent-no-build-tools-eg-opencode) for now. This section will be restored once published.
+Add this to your MCP client config (Claude Code: `.mcp.json`, Cursor: `mcp.json`):
 
 ```jsonc
 {
@@ -57,6 +57,8 @@ There are **three pieces**: the MCP server (what the agent talks to), the Figma 
   },
 }
 ```
+
+`npx` always pulls the latest release from npm. Then continue to [step 3 (plugin)](#3--install-the-figma-plugin-once).
 
 ### Option B · From source (dev / hacking)
 
