@@ -9,6 +9,33 @@ const state = {
   serverPort: 3055, // Default port
 };
 
+// Fork identity. PLUGIN_VERSION must match package.json; PLUGIN_COMMANDS must
+// match the handleCommand case labels below (both enforced by tests).
+const PLUGIN_VERSION = "1.6.0";
+const PLUGIN_COMMANDS = [
+  "get_document_info", "list_pages", "set_page", "get_page_info",
+  "get_selection", "get_node_info", "get_nodes_info", "read_my_design",
+  "create_rectangle", "create_frame", "create_text", "set_fill_color",
+  "set_stroke_color", "move_node", "resize_node", "delete_node",
+  "delete_multiple_nodes", "get_styles", "get_local_components",
+  "create_component_instance", "export_node_as_image", "set_corner_radius",
+  "set_text_content", "clone_node", "rename_layer", "scan_text_nodes",
+  "set_multiple_text_contents", "get_annotations", "set_annotation",
+  "scan_nodes_by_types", "set_multiple_annotations", "get_instance_overrides",
+  "set_instance_overrides", "set_layout_mode", "set_padding", "set_axis_align",
+  "set_layout_sizing", "set_item_spacing", "get_reactions",
+  "set_default_connector", "create_connections", "set_focus", "set_selections",
+  "set_font_name", "set_image_fill", "insert_child", "reorder_layers",
+  "set_effect", "set_gradient_fill", "create_ellipse", "create_svg",
+  "batch_ops", "get_status", "get_console_logs", "get_page_snapshot",
+  "get_variables", "create_variable_collection", "create_variable",
+  "set_variable_value", "bind_variable", "get_css", "create_page",
+  "rename_page", "delete_page", "create_component",
+  "create_component_from_node", "get_component_sets", "search_nodes",
+  "extract_images", "create_style", "apply_style", "boolean_op", "set_mask",
+  "set_hyperlink", "get_plugin_info",
+];
+
 // --- Console capture ring buffer ---------------------------------------------
 // Mirror console.* into a bounded buffer so an agent can pull plugin-side logs
 // and errors on demand via the get_console_logs command (parity with the
@@ -338,6 +365,8 @@ async function handleCommand(command, params) {
       return await setMask(params);
     case "set_hyperlink":
       return await setHyperlink(params);
+    case "get_plugin_info":
+      return { pluginVersion: PLUGIN_VERSION, commands: PLUGIN_COMMANDS };
     default:
       throw new Error(`Unknown command: ${command}`);
   }
