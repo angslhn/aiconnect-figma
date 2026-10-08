@@ -12,8 +12,8 @@
 //
 // Usage (the MCP server hosts the relay itself; you only need this to run it
 // standalone, e.g. to share one relay across several agents):
-//   npx -y aiconnect-figma-mcp relay            # default port 3055
-//   PORT=4000 npx -y aiconnect-figma-mcp relay  # custom port
+//   npx -y aiconnect-figma relay            # default port 3055
+//   PORT=4000 npx -y aiconnect-figma relay  # custom port
 //   node scripts/relay.mjs                      # from a clone
 //
 // Security: binds 127.0.0.1 by default (AICONNECT_RELAY_HOST to override),

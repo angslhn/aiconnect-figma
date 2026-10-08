@@ -78,7 +78,11 @@ echo
 echo "  2) Run  Plugins → Development → AIConnect for Figma."
 echo "     The MCP server hosts the relay, so once your agent is running the"
 echo "     panel turns green on its own. (Standalone relay if ever needed:"
-echo "     $RUNTIME run relay  — or  npx -y aiconnect-figma-mcp relay)"
+echo "     $RUNTIME run relay  — or  npx -y aiconnect-figma relay)"
+echo
+echo "  NOTE: the relay now requires a token. It is auto-created at"
+echo "        ~/.aiconnect-relay-token (or set AICONNECT_RELAY_TOKEN)."
+echo "        Paste it once into the plugin's \"Relay token\" field."
 echo
 echo "  3) In your agent, just call  join_channel  (no arguments) — it"
 echo "     auto-detects the plugin's channel. Then start designing."

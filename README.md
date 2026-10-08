@@ -8,14 +8,14 @@
 
 Open-source · fully local · no cloud, no telemetry · works with Claude Code, Cursor, or any MCP client.
 
-[![npm](https://img.shields.io/npm/v/aiconnect-figma-mcp.svg?color=cb3837&logo=npm)](https://www.npmjs.com/package/aiconnect-figma-mcp)
+[![npm](https://img.shields.io/npm/v/aiconnect-figma.svg?color=cb3837&logo=npm)](https://www.npmjs.com/package/aiconnect-figma)
 [![License: MIT](https://img.shields.io/badge/License-MIT-1e7a7f.svg)](./LICENSE)
 [![Free for everyone](https://img.shields.io/badge/Free-individuals%20%26%20teams-2ea44f.svg)](#-license)
 [![MCP](https://img.shields.io/badge/Model%20Context%20Protocol-compatible-8A2BE2.svg)](https://modelcontextprotocol.io)
 [![Local-first](https://img.shields.io/badge/100%25-local%20%C2%B7%20no%20telemetry-2ea44f.svg)](#why-aiconnect)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178c6.svg?logo=typescript&logoColor=white)](#)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#-contributing)
-[![Stars](https://img.shields.io/github/stars/guptaprakhariitr/aiconnect-figma-mcp?style=social)](https://github.com/guptaprakhariitr/aiconnect-figma-mcp)
+[![Stars](https://img.shields.io/github/stars/angslhn/aiconnect-figma?style=social)](https://github.com/angslhn/aiconnect-figma)
 
 <img src="assets/aiconnect-cover-1920x960.png" width="100%" alt="AIConnect cover" />
 
@@ -52,7 +52,7 @@ Add this to your MCP client config (Claude Code: `.mcp.json`, Cursor: `mcp.json`
   "mcpServers": {
     "AIConnect": {
       "command": "npx",
-      "args": ["-y", "aiconnect-figma-mcp"],
+      "args": ["-y", "aiconnect-figma"],
     },
   },
 }
@@ -63,8 +63,8 @@ Add this to your MCP client config (Claude Code: `.mcp.json`, Cursor: `mcp.json`
 ### Option B · From source (dev / hacking)
 
 ```bash
-git clone https://github.com/guptaprakhariitr/aiconnect-figma-mcp
-cd aiconnect-figma-mcp
+git clone https://github.com/angslhn/aiconnect-figma
+cd aiconnect-figma
 bun install && bun run build        # or: npm install && npm run build
 ```
 
@@ -82,7 +82,7 @@ Then point your MCP client at the build output (absolute path):
   "mcpServers": {
     "AIConnect": {
       "command": "node",
-      "args": ["/absolute/path/to/aiconnect-figma-mcp/dist/server.js"],
+      "args": ["/absolute/path/to/aiconnect-figma/dist/server.js"],
     },
   },
 }
@@ -92,15 +92,17 @@ Then point your MCP client at the build output (absolute path):
 
 ### 2 · Relay (nothing to do)
 
-The MCP server hosts the `ws://localhost:3055` relay itself on startup (if the port is taken, it joins the existing relay instead). **There is no second process to run.** Only if you want one relay shared across several agents: `npx -y aiconnect-figma-mcp relay` (or `bun run relay`).
+The MCP server hosts the `ws://localhost:3055` relay itself on startup (if the port is taken, it joins the existing relay instead). **There is no second process to run.** Only if you want one relay shared across several agents: `npx -y aiconnect-figma relay` (or `bun run relay`).
 
 ### 3 · Install the Figma plugin (once)
 
-1. **[⬇️ Download `aiconnect-figma-plugin.zip`](https://github.com/guptaprakhariitr/aiconnect-figma-mcp/releases/latest)** and unzip it — or, from source, use the `src/figma_plugin/` folder directly.
+1. **[⬇️ Download `aiconnect-figma-plugin.zip`](https://github.com/angslhn/aiconnect-figma/releases/latest)** and unzip it — or import straight from source via `src/figma_plugin/manifest.json` (no download needed).
 2. In the **Figma desktop app** (not the browser): menu → **Plugins → Development → Import plugin from manifest…** → pick the unzipped `manifest.json`.
 3. Run **Plugins → Development → AIConnect for Figma**.
 
 The panel may show red (**Disconnected**) — that's normal, it just means no agent is attached yet, not an error.
+
+> 🔑 First run only: the relay now requires a token. Copy it from the MCP server logs (`Relay token stored at …`, or read the file directly) into the plugin's **Relay token** field and connect — it is remembered afterwards.
 
 <div align="center">
 <img src="assets/screenshots/step-import-manifest.png" width="560" alt="Figma → Plugins & widgets → Import from manifest" />
@@ -271,7 +273,7 @@ AI agent (MCP client)
    Your Figma file
 ```
 
-The **MCP server** ([`src/aiconnect_mcp/server.ts`](src/aiconnect_mcp/server.ts)) exposes the tools and runs under plain Node; it also **hosts the relay in-process** by binding port 3055 on startup (falling back to an existing relay if the port is taken), so there's normally nothing separate to run. The **relay** can also run standalone — `npx -y aiconnect-figma-mcp relay` (Node) or `bun socket` (Bun) — to share one broker across agents. The **plugin** ([`src/figma_plugin/`](src/figma_plugin/)) runs inside Figma. The agent and the plugin meet on the same **channel**; because the server observes the plugin's channel through the relay, `join_channel` needs no code in the normal case.
+The **MCP server** ([`src/aiconnect_mcp/server.ts`](src/aiconnect_mcp/server.ts)) exposes the tools and runs under plain Node; it also **hosts the relay in-process** by binding port 3055 on startup (falling back to an existing relay if the port is taken), so there's normally nothing separate to run. The **relay** can also run standalone — `npx -y aiconnect-figma relay` (Node) or `bun socket` (Bun) — to share one broker across agents. The **plugin** ([`src/figma_plugin/`](src/figma_plugin/)) runs inside Figma. The agent and the plugin meet on the same **channel**; because the server observes the plugin's channel through the relay, `join_channel` needs no code in the normal case.
 
 ---
 

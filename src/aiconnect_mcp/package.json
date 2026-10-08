@@ -1,5 +1,5 @@
 {
-  "name": "aiconnect-figma-mcp",
+  "name": "aiconnect-figma",
   "version": "1.6.0",
   "description": "MCP server for Figma integration",
   "main": "server.ts",
