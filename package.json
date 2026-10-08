@@ -10,13 +10,13 @@
       "url": "https://github.com/guptaprakhariitr"
     }
   ],
-  "homepage": "https://github.com/angslhn/aiconnect-figma-mcp#readme",
+  "homepage": "https://github.com/angslhn/aiconnect-figma#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/angslhn/aiconnect-figma-mcp.git"
+    "url": "https://github.com/angslhn/aiconnect-figma.git"
   },
   "bugs": {
-    "url": "https://github.com/angslhn/aiconnect-figma-mcp/issues"
+    "url": "https://github.com/angslhn/aiconnect-figma/issues"
   },
   "keywords": [
     "figma",

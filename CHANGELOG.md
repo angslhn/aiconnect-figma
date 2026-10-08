@@ -61,7 +61,7 @@ mismatched builds are visible.
 
 ### Fork identity
 
-- Package renamed to `aiconnect-figma` (repo `angslhn/aiconnect-figma-mcp`);
+- Package renamed to `aiconnect-figma` (repo `angslhn/aiconnect-figma`);
   original author kept in `contributors`, LICENSE/NOTICE unchanged.
 - Server version read from `package.json` (was hardcoded `1.3.0`).
 - Plugin reports `PLUGIN_VERSION` + command list on join; `get_status`
