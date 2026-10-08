@@ -12,7 +12,10 @@ import {
   listBrandPresets, buildBrand, searchIcons, fetchIconSvg, searchImages,
   generateContent, parseTokensFile, auditLayout,
 } from "./design_intel.js";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { randomBytes } from "node:crypto";
 
 // Define TypeScript interfaces for Figma responses
 interface FigmaResponse {
@@ -142,6 +145,33 @@ const serverArg = args.find(arg => arg.startsWith('--server='));
 const serverUrl = serverArg ? serverArg.split('=')[1] : 'localhost';
 const WS_URL = serverUrl === 'localhost' ? `ws://${serverUrl}` : `wss://${serverUrl}`;
 const RELAY_PORT = Number(process.env.PORT || process.env.AICONNECT_RELAY_PORT || 3055);
+// Bind loopback only by default so the relay is never exposed to the LAN.
+// Override (e.g. Docker) with AICONNECT_RELAY_HOST=0.0.0.0 — at your own risk.
+const RELAY_HOST = process.env.AICONNECT_RELAY_HOST || '127.0.0.1';
+
+// Shared relay token (the main auth layer: a sandboxed web iframe also sends
+// Origin "null", so Origin checks alone can't tell it apart from the plugin).
+// Precedence: AICONNECT_RELAY_TOKEN env, else a stable per-user file that is
+// auto-created once (mode 600). The MCP client and the embedded relay always
+// agree; the Figma plugin UI holds a copy (pasted once, persisted) so
+// join_channel auto-join keeps working with zero per-session steps.
+const RELAY_TOKEN_FILE = join(homedir(), '.aiconnect-relay-token');
+function getRelayToken(): string {
+  const fromEnv = (process.env.AICONNECT_RELAY_TOKEN || '').trim();
+  if (fromEnv) return fromEnv;
+  try {
+    const saved = readFileSync(RELAY_TOKEN_FILE, 'utf8').trim();
+    if (saved) return saved;
+  } catch { /* first run: create it below */ }
+  const fresh = randomBytes(32).toString('hex');
+  try {
+    writeFileSync(RELAY_TOKEN_FILE, fresh + '\n', { mode: 0o600 });
+  } catch (err) {
+    logger.warn(`Could not persist relay token to ${RELAY_TOKEN_FILE}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  return fresh;
+}
+const RELAY_TOKEN = getRelayToken();
 
 // Document Info Tool
 server.tool(
@@ -3391,7 +3421,33 @@ function startEmbeddedRelay(port: number = RELAY_PORT): Promise<void> {
       if (sock.readyState === WebSocket.OPEN) sock.send(JSON.stringify(obj));
     };
 
-    const wss = new WebSocketServer({ port });
+    const wss = new WebSocketServer({
+      port,
+      host: RELAY_HOST,
+      // Handshake gate. Wire message format is untouched; auth happens here.
+      // - Origin: allow missing (Node clients send none) and "null" (Figma
+      //   plugin iframe). Reject real web origins (https?://...) so random
+      //   websites can't drive the relay from your browser.
+      // - Token: must match ?token=. This is the layer that stops a
+      //   sandboxed web iframe (also Origin "null") from joining.
+      // list_channels and everything else is therefore authenticated-only.
+      verifyClient: (info: any, done: (ok: boolean, code?: number, message?: string) => void) => {
+        const origin = String((info.req && info.req.headers && info.req.headers.origin) || '');
+        if (origin && origin !== 'null') {
+          done(false, 403, 'Forbidden origin');
+          return;
+        }
+        let token = '';
+        try {
+          token = new URL(info.req.url || '/', 'ws://relay').searchParams.get('token') || '';
+        } catch { /* malformed URL: reject below */ }
+        if (!token || token !== RELAY_TOKEN) {
+          done(false, 401, 'Unauthorized relay token');
+          return;
+        }
+        done(true);
+      },
+    });
 
     wss.on('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'EADDRINUSE') {
@@ -3404,7 +3460,8 @@ function startEmbeddedRelay(port: number = RELAY_PORT): Promise<void> {
 
     wss.on('listening', () => {
       relayServer = wss;
-      logger.info(`Embedded relay listening on ws://localhost:${port}`);
+      logger.info(`Embedded relay listening on ws://${RELAY_HOST}:${port} (loopback only unless AICONNECT_RELAY_HOST is set)`);
+      logger.info(`Relay token stored at ${RELAY_TOKEN_FILE} — paste its content into the Figma plugin's "Relay token" field once; it is remembered.`);
       resolve();
     });
 
@@ -3495,8 +3552,8 @@ function connectToFigma(port: number = RELAY_PORT) {
     return;
   }
 
-  const wsUrl = serverUrl === 'localhost' ? `${WS_URL}:${port}` : WS_URL;
-  logger.info(`Connecting to Figma socket server at ${wsUrl}...`);
+  const wsUrl = serverUrl === 'localhost' ? `${WS_URL}:${port}/?token=${encodeURIComponent(RELAY_TOKEN)}` : WS_URL;
+  logger.info(`Connecting to Figma socket server at ${WS_URL}:${port}...`);
   ws = new WebSocket(wsUrl);
 
   ws.on('open', () => {
@@ -4550,7 +4607,7 @@ async function main() {
   // already hosts the relay itself, so this subcommand is rarely needed.
   if (args.includes('relay')) {
     await startEmbeddedRelay();
-    logger.info(`Relay running on ws://localhost:${RELAY_PORT}. Leave this running.`);
+    logger.info(`Relay running on ws://${RELAY_HOST}:${RELAY_PORT}. Leave this running.`);
     // Keep the process alive serving the relay; do not start the stdio MCP server.
     await new Promise(() => {});
     return;
