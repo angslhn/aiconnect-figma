@@ -31,5 +31,8 @@ jobs:
       - name: Connection-free tests (wiring + docs sync)
         run: bun run test
 
+      - name: Relay gate tests (401/403/loopback/LAN refusal)
+        run: npm run test:security
+
       - name: Relay syntax check
         run: node --check scripts/relay.mjs
