@@ -131,6 +131,13 @@ If you just want to *use* it (no Node/Bun toolchain), grab a prebuilt bundle:
    }
    ```
    (Any MCP-capable agent works — Claude Code, Cursor, etc. — with the equivalent local-command config pointing at `server.cjs`.)
+
+   > **Windows notes (verified):** run opencode from the **project root** so the
+   > relative path resolves; use **forward slashes** as above; and keep
+   > `server.cjs` inside the project — placing it under a system temp folder
+   > makes Node fail with `MODULE_NOT_FOUND` on a file that exists
+   > (observed with `opencode mcp list`: `✗ aiconnect-figma failed`), while
+   > the same layout in the project folder reports `✓ aiconnect-figma connected`.
 6. **Restart the agent session** so the new tools load, then `join_channel` (no arguments) and confirm with `get_status` — `serverVersion` and `pluginVersion` should match.
 
 ### 2 · Relay (nothing to do)
