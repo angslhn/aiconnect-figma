@@ -3,6 +3,35 @@
 // Copyright (c) 2026 Prakhar Gupta.
 
 import { Server, ServerWebSocket } from "bun";
+import { readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { randomBytes } from "node:crypto";
+
+const PORT = Number(process.env.PORT || process.env.AICONNECT_RELAY_PORT || 3055);
+// Loopback only by default; override with AICONNECT_RELAY_HOST at your own risk.
+const HOST = process.env.AICONNECT_RELAY_HOST || "127.0.0.1";
+
+// Shared relay token (main auth layer — a sandboxed web iframe also sends
+// Origin "null", so Origin checks alone can't identify the plugin).
+// Same precedence/file as the Node relay and MCP server.
+const TOKEN_FILE = join(homedir(), ".aiconnect-relay-token");
+function getToken(): string {
+  const fromEnv = (process.env.AICONNECT_RELAY_TOKEN || "").trim();
+  if (fromEnv) return fromEnv;
+  try {
+    const saved = readFileSync(TOKEN_FILE, "utf8").trim();
+    if (saved) return saved;
+  } catch { /* first run */ }
+  const fresh = randomBytes(32).toString("hex");
+  try {
+    writeFileSync(TOKEN_FILE, fresh + "\n", { mode: 0o600 });
+  } catch (err) {
+    console.error("Could not persist relay token:", err);
+  }
+  return fresh;
+}
+const TOKEN = getToken();
 
 // Store clients by channel
 const channels = new Map<string, Set<ServerWebSocket<any>>>();
@@ -43,10 +72,22 @@ function handleConnection(ws: ServerWebSocket<any>) {
 }
 
 const server = Bun.serve({
-  port: 3055,
+  port: PORT,
+  hostname: HOST,
   // uncomment this to allow connections in windows wsl
   // hostname: "0.0.0.0",
   fetch(req: Request, server: Server) {
+    // Handshake gate (wire message format untouched):
+    // reject web Origins, require ?token=. Missing Origin (Node clients)
+    // and "null" (Figma plugin iframe) are allowed through to the token check.
+    const url = new URL(req.url);
+    const origin = req.headers.get("origin") || "";
+    if (origin && origin !== "null") {
+      return new Response("Forbidden origin", { status: 403 });
+    }
+    if (url.searchParams.get("token") !== TOKEN) {
+      return new Response("Unauthorized relay token", { status: 401 });
+    }
     // Handle CORS preflight
     if (req.method === "OPTIONS") {
       return new Response(null, {
@@ -219,4 +260,5 @@ const server = Bun.serve({
   }
 });
 
-console.log(`WebSocket server running on port ${server.port}`);
+console.log(`WebSocket server running on ws://${HOST}:${server.port} (loopback only unless AICONNECT_RELAY_HOST is set)`);
+console.log(`Relay token stored at ${TOKEN_FILE} — paste it into the Figma plugin's "Relay token" field once.`);
