@@ -282,6 +282,8 @@ async function handleCommand(command, params) {
       return await setImageFill(params);
     case "insert_child":
       return await insertChild(params);
+    case "reorder_layers":
+      return await reorderLayers(params);
     case "set_effect":
       return await setEffect(params);
     case "set_gradient_fill":
@@ -527,6 +529,45 @@ async function insertChild(params) {
   if (idx > parent.children.length) idx = parent.children.length;
   parent.insertChild(idx, child);
   return { parentId: parentId, childId: childId, index: idx, childCount: parent.children.length };
+}
+
+// Reorder several sibling layers in one call, using the order the user sees
+// in the Figma layers sidebar (top to bottom = front to back). The plugin
+// reverses it into the children array order (bottom to top) that Figma uses
+// internally. Only the listed children move; unlisted siblings keep their
+// relative order and sink below the listed ones.
+async function reorderLayers(params) {
+  const { parentId, order } = params || {};
+  if (!parentId) throw new Error("Missing parentId parameter");
+  if (!order || !Array.isArray(order) || order.length === 0) {
+    throw new Error("Missing or invalid order parameter (array of child IDs, panel top to bottom)");
+  }
+  const parent = await figma.getNodeByIdAsync(parentId);
+  if (!parent) throw new Error(`Parent not found: ${parentId}`);
+  if (typeof parent.insertChild !== "function") throw new Error(`Parent does not support children: ${parentId}`);
+  const seen = {};
+  const ids = [];
+  for (const id of order) {
+    if (typeof id !== "string" || seen[id]) continue;
+    seen[id] = true;
+    const child = await figma.getNodeByIdAsync(id);
+    if (!child) throw new Error(`Child not found: ${id}`);
+    if (!child.parent || child.parent.id !== parent.id) {
+      throw new Error(`Node ${id} is not a direct child of ${parentId}`);
+    }
+    ids.push(id);
+  }
+  // Sidebar top-to-bottom == children array bottom-to-top, so insert reversed.
+  const reversed = ids.slice().reverse();
+  for (let i = 0; i < reversed.length; i++) {
+    const child = await figma.getNodeByIdAsync(reversed[i]);
+    parent.insertChild(i, child);
+  }
+  return {
+    parentId: parentId,
+    panelOrder: ids,
+    childCount: parent.children.length,
+  };
 }
 
 // Set an image fill on a node from base64-encoded image bytes

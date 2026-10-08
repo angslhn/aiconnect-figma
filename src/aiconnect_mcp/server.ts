@@ -971,6 +971,26 @@ server.tool(
   }
 );
 
+// Reorder Layers Tool — reorder sibling layers using the order the user sees
+// in the Figma layers sidebar (top to bottom = front to back). Use this when
+// the user talks about sidebar/layer order, not canvas position.
+server.tool(
+  "reorder_layers",
+  "Reorder sibling layers in the Figma layers sidebar. Pass child IDs in sidebar order top to bottom (front to back). Only listed children move; unlisted siblings keep order below them.",
+  {
+    parentId: z.string().describe("The ID of the parent (page, frame, or section)"),
+    order: z.array(z.string()).min(1).describe("Child IDs in desired sidebar order, top to bottom"),
+  },
+  async ({ parentId, order }: any) => {
+    try {
+      const result: any = await sendCommandToFigma("reorder_layers", { parentId, order });
+      return { content: [{ type: "text", text: `Reordered ${parentId} sidebar to: ${(result && result.panelOrder || []).join(" > ")}` }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error reordering layers: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
 // Set Stroke Color Tool
 server.tool(
   "set_stroke_color",
@@ -3009,6 +3029,7 @@ type FigmaCommand =
   | "set_font_name"
   | "set_image_fill"
   | "insert_child"
+  | "reorder_layers"
   | "set_effect"
   | "set_gradient_fill"
   | "create_ellipse"
@@ -3181,6 +3202,10 @@ type CommandParams = {
   rename_layer: {
     nodeId: string;
     name: string;
+  };
+  reorder_layers: {
+    parentId: string;
+    order: string[];
   };
   set_text_content: {
     nodeId: string;

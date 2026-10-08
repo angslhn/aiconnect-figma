@@ -38,6 +38,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   **`set_hyperlink`** (text ranges).
 - **`rename_layer({nodeId, name})`** — rename any layer (frames, text,
   sections, components, pages); `node.name` is read-write in the Plugin API.
+- **`reorder_layers({parentId, order})`** — reorder sibling layers using
+  sidebar order top to bottom (front to back); unlisted siblings keep order
+  below the listed ones.
 
 ### Added — design intelligence (local)
 
