@@ -92,14 +92,18 @@ let lastObservedChannel: string | null = null;
 let channelDiscoveryResolver: ((v: { channels: string[]; lastJoined: string | null }) => void) | null = null;
 
 // Server version is read from package.json (single source of truth) — never
-// hardcoded. dist/server.js sits directly under <root>/dist/, so
-// ../package.json is the package root in both source builds and npm installs.
+// hardcoded. Candidates cover both layouts: dist/server.js in a source/npm
+// install (<root>/dist/ → ../package.json) and server.cjs at the root of the
+// release plugin zip (./package.json, shipped by scripts/package-plugin.mjs).
 function readPackageVersion(): string {
-  try {
-    const pkgUrl = new URL('../package.json', import.meta.url);
-    const pkg = JSON.parse(readFileSync(pkgUrl, 'utf8'));
-    if (pkg && typeof pkg.version === 'string' && pkg.version) return pkg.version;
-  } catch { /* e.g. exotic install layout: fall through */ }
+  const candidates = ['../package.json', './package.json'];
+  for (const rel of candidates) {
+    try {
+      const pkgUrl = new URL(rel, import.meta.url);
+      const pkg = JSON.parse(readFileSync(pkgUrl, 'utf8'));
+      if (pkg && typeof pkg.version === 'string' && pkg.version) return pkg.version;
+    } catch { /* try next candidate */ }
+  }
   return 'unknown';
 }
 const SERVER_VERSION = readPackageVersion();

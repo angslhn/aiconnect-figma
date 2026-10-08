@@ -56,6 +56,7 @@
     "setup": "./scripts/setup.sh",
     "build": "tsup",
     "build:standalone": "tsup --config tsup.config.standalone.ts",
+    "package": "node scripts/package-plugin.mjs",
     "build:watch": "tsup --watch",
     "dev": "bun run build:watch",
     "test": "bun tests/coverage.mjs",
