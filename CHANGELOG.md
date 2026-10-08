@@ -5,7 +5,11 @@ All notable changes to **AIConnect for Figma** are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.6.0] — 2026-10-08
+
+Covers everything since 1.4.0 (see git history): new tools, relay security,
+and fork identity. `get_status` reports `serverVersion`/`pluginVersion` so
+mismatched builds are visible.
 
 ### Fixed — accuracy
 
@@ -46,6 +50,22 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 - **`audit_layout({nodeId, grid})`** — offline off-grid report
   (positions/sizes/corner radii not on the 8pt grid) for the agent to fix.
+
+### Security — relay (fork)
+
+- Relay binds `127.0.0.1` by default (`AICONNECT_RELAY_HOST` to override),
+  rejects non-null web `Origin`s, and requires a shared `?token=`
+  (`AICONNECT_RELAY_TOKEN` or auto-created `~/.aiconnect-relay-token`).
+  Applies to the embedded relay, `scripts/relay.mjs`, and `src/socket.ts`;
+  the plugin UI holds the token (pasted once, persisted).
+
+### Fork identity
+
+- Package renamed to `aiconnect-figma` (repo `angslhn/aiconnect-figma`);
+  original author kept in `contributors`, LICENSE/NOTICE unchanged.
+- Server version read from `package.json` (was hardcoded `1.3.0`).
+- Plugin reports `PLUGIN_VERSION` + command list on join; `get_status`
+  shows both sides and warns on mismatch.
 
 ## [1.4.0] — 2026-10-07
 

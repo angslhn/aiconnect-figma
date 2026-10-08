@@ -291,6 +291,8 @@ Because everything runs over `localhost` (no cloud relay, no network round‑tri
 
 These are end‑to‑end round‑trips (agent → MCP server → relay → Figma plugin → back), measured on a developer laptop. The localhost transport is the reason — a hosted/cloud relay pays a network hop on every call.
 
+> **Upstream figures:** these numbers were measured by the original author on their hardware, not re-measured on this fork. Same localhost architecture, so the same order of magnitude is expected — treat exact values as indicative.
+
 > Heads‑up: creating lots of **text** nodes is the one slow spot (Figma reflows on each insert). Parent text into a frame and set auto‑layout last — the built‑in guidance tells the agent to do this automatically.
 
 ---

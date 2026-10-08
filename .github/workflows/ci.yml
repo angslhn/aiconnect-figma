@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Set up Node (for relay syntax check)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build (normal + standalone)
+        run: |
+          bun run build
+          bun run build:standalone
+
+      - name: Connection-free tests (wiring + docs sync)
+        run: bun run test
+
+      - name: Relay syntax check
+        run: node --check scripts/relay.mjs
