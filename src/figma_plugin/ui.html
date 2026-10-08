@@ -286,6 +286,16 @@
               max="65535"
             />
           </div>
+
+          <div id="token-container">
+            <label for="relay-token">Relay token</label>
+            <input
+              type="password"
+              id="relay-token"
+              placeholder="Paste once from the MCP server logs"
+              autocomplete="off"
+            />
+          </div>
         </div>
 
         <div id="connection-status" class="status disconnected">
@@ -401,8 +411,11 @@
 
       // UI Elements
       const portInput = document.getElementById("port");
+      const tokenInput = document.getElementById("relay-token");
       const connectButton = document.getElementById("btn-connect");
       const connectionStatus = document.getElementById("connection-status");
+      // Restore the persisted relay token (pasted once, remembered after).
+      try { tokenInput.value = localStorage.getItem("mcp_relay_token") || ""; } catch (e) {}
 
       // Tabs
       const tabs = document.querySelectorAll(".tab");
@@ -439,6 +452,7 @@
         connectButton.textContent = isConnected ? "Disconnect" : "Connect";
         connectButton.className = isConnected ? "secondary" : "primary";
         portInput.disabled = isConnected;
+        tokenInput.disabled = isConnected;
 
         // Show/hide MCP config section
         const mcpConfig = document.getElementById("mcp-config");
@@ -460,7 +474,14 @@
 
           state.serverPort = port;
           state.shouldReconnect = true;
-          const wsUrl = `ws://localhost:${port}`;
+          // Relay token rides in the URL query (browsers can't set WS
+          // headers). Persist it so auto-join keeps working hands-free.
+          const relayToken = (tokenInput.value || "").trim();
+          try {
+            if (relayToken) localStorage.setItem("mcp_relay_token", relayToken);
+            else localStorage.removeItem("mcp_relay_token");
+          } catch (e) {}
+          const wsUrl = `ws://localhost:${port}/?token=${encodeURIComponent(relayToken)}`;
 
           state.socket = new WebSocket(wsUrl);
 
